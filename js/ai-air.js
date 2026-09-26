@@ -41,7 +41,30 @@
       return A().squadronsOf(plan.side).filter((q) => plan.factions.includes(q.faction) && q.steps > 0);
     },
 
+    // Counterspace: blind enemy satellites periodically; the PRC may use a kinetic ASAT if it has chosen escalation.
+    spaceAI(plan) {
+      const S = WG.Space;
+      if (!S || !S.active()) return;
+      const g = G();
+      const side = plan.side;
+      const owner = g.scenario.spaceFaction && g.scenario.spaceFaction[side];
+      if (owner && !plan.factions.includes(owner)) return;
+      if (!S.canAct(side)) return;
+      const st = S.st(side);
+      const lvl = g.state.escalation ? g.state.escalation.level : 0;
+      if (side === 'red') {
+        if (st.asat > 0 && g.state.aiPlan && g.state.aiPlan.strikeJapan && g.state.turn >= 3 && lvl <= 6 && Math.random() < 0.35) {
+          S.asat(side, Math.random() < 0.6 ? 'isr' : 'satcom');
+          return;
+        }
+        if (st.dazzle > 0 && (g.state.turn === 1 || g.state.turn % 3 === 0)) S.dazzle(side);
+      } else if (st.dazzle > 0 && (g.state.turn === 2 || g.state.turn % 4 === 1)) {
+        S.dazzle(side);
+      }
+    },
+
     async before(plan, ctx) {
+      this.spaceAI(plan);
       const air = A();
       if (!air.active()) return;
       const side = plan.side;
@@ -128,6 +151,7 @@
       const ground = air.st().squadrons.filter((q) => q.base === def.id && !q.mission && q.steps > 0);
       const exposed = Math.max(0, ground.length - (def.shelters || 0));
       let s = exposed * 1.2 + (ground.length ? (st.runway < 2 ? 1.5 : 0.3) : 0.2);
+      if (def.carrier) s = 2.5 + ground.length * 0.8;
       if (G().state.turn <= 2) s *= 1.5;
       return s;
     },
@@ -211,6 +235,8 @@
       for (const def of air.allBases()) {
         if (def.kind === 'carrier' || air.owner(def.id) === side) continue;
         if (def.kind === 'offmap' && !at.standoff) continue;
+        if (def.carrier && !air.carrierTracked(side, def)) continue;
+        if (air.status(def.id).sunk || (def.arrives && g.state.turn < def.arrives)) continue;
         if (!this.allowedBase(side, def)) continue;
         if (def.kind === 'hex' && !this.allowedTile(side, air.baseTile(def))) continue;
         const t = air.baseTile(def);

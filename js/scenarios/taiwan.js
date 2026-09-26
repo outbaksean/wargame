@@ -129,7 +129,6 @@
   }
 
   function setupUS(G, access) {
-    U(G, 'us', 'cv', 'CSG-5 (CVN-73)', 123.05, 23.15);
     U(G, 'us', 'ddg', 'DESRON 15', 122.95, 23.35);
     U(G, 'us', 'ssn', 'SSN Group West', 122.15, 21.55);
     U(G, 'us', 'ssn', 'SSN Group North', 122.65, 25.75);
@@ -142,6 +141,13 @@
   }
 
   function setupPRC(G) {
+    if (G.state.force === 'surge') {
+      ship(G, 'prc', 'amph', 'ATF North 5', 119.85, 25.70, [['amphmech', '72 GA 5 Amph Bde (2)']]);
+      ship(G, 'prc', 'amph', 'ATF South 5', 118.95, 24.40, [['marine', '5 Marine Bde']]);
+      ship(G, 'prc', 'amph', 'ATF Center', 119.40, 24.75, [['amphmech', '73 GA 14 Amph Bde (2)']]);
+      U(G, 'prc', 'ddg', '055 SAG South', 119.25, 24.40);
+      U(G, 'prc', 'ffg', '054A Escort Center 2', 119.60, 25.15);
+    }
     // Northern amphibious task force, loaded and at sea.
     ship(G, 'prc', 'amph', 'ATF North 1', 119.95, 25.45, [['amphmech', '5 Amph CA Bde']]);
     ship(G, 'prc', 'amph', 'ATF North 2', 120.00, 25.30, [['marine', '1 Marine Bde']]);
@@ -168,6 +174,8 @@
     // Blue-water screen, carrier and submarines.
     U(G, 'prc', 'ddg', '055 SAG', 121.85, 26.10);
     U(G, 'prc', 'ffg', '054A Screen East', 121.35, 25.80);
+    U(G, 'prc', 'ddg', '052D SAG Center', 119.55, 24.95);
+    U(G, 'prc', 'ffg', '054B Escort Center', 119.45, 24.85);
     U(G, 'prc', 'fac', '056A Corvettes N', 119.90, 24.95);
     U(G, 'prc', 'fac', '056A Corvettes S', 119.30, 24.30);
     U(G, 'prc', 'cv', 'Shandong CSG', 122.90, 21.65);
@@ -206,6 +214,8 @@
       { id: 'iwakuni', name: 'MCAS Iwakuni', side: 'blue', tier: 'medium', shelters: 2, ad: 3, bmd: 2, country: 'JP', requires: 'japan', region: 'Japan' },
       { id: 'misawa', name: 'Misawa AB', side: 'blue', tier: 'medium', shelters: 2, ad: 3, bmd: 1, country: 'JP', requires: 'japan', region: 'Japan' },
       { id: 'luzon', name: 'EDCA sites (N. Luzon)', side: 'blue', tier: 'medium', shelters: 0, ad: 2, bmd: 0, country: 'PH', requires: 'ph', region: 'Philippines' },
+      { id: 'csg5', name: 'CSG-5 (CVN-73), Philippine Sea', side: 'blue', tier: 'medium', carrier: true, organicTankers: true, shelters: 0, ad: 10, bmd: 6, country: 'US', region: 'Carrier', zone: 'eas' },
+      { id: 'csg3', name: 'CSG-3 (CVN-72), Philippine Sea', side: 'blue', tier: 'medium', carrier: true, organicTankers: true, shelters: 0, ad: 10, bmd: 6, country: 'US', region: 'Carrier', zone: 'eas', arrives: 8 },
       { id: 'guam', name: 'Andersen AFB (Guam)', side: 'blue', tier: 'far', shelters: 1, ad: 5, bmd: 5, country: 'US', region: 'Guam' },
       { id: 'zhejiang', name: 'Zhejiang bases (Luqiao, Ningbo)', side: 'red', tier: 'close', shelters: 3, ad: 6, bmd: 2, country: 'CN', region: 'PRC' },
       { id: 'guangdong', name: 'Guangdong bases (Jieyang, Shantou)', side: 'red', tier: 'close', shelters: 3, ad: 6, bmd: 2, country: 'CN', region: 'PRC' },
@@ -227,8 +237,8 @@
       ['us', 'tanker', 'KC-135 (Kadena)', 'kadena'], ['us', 'mpa', 'P-8A Det (Kadena)', 'kadena'], ['us', 'uav', 'MQ-9 (Kadena)', 'kadena'],
       ['us', 'ftr5', 'MAG-12 F-35B', 'iwakuni'], ['us', 'ftr', '35 FW F-16 (SEAD)', 'misawa'],
       ['us', 'bomber', 'B-1B (Guam)', 'guam'], ['us', 'tanker', 'KC-46 (Guam)', 'guam'], ['us', 'uav', 'MQ-4C Triton', 'guam'],
-      ['us', 'ftr5', 'CVW-5 F-35C', 'cv:CSG-5 (CVN-73)'], ['us', 'ftr', 'CVW-5 F/A-18E/F', 'cv:CSG-5 (CVN-73)'],
-      ['us', 'aew', 'CVW-5 E-2D', 'cv:CSG-5 (CVN-73)'], ['us', 'ewac', 'CVW-5 EA-18G', 'cv:CSG-5 (CVN-73)'],
+      ['us', 'ftr5', 'CVW-5 F-35C', 'csg5'], ['us', 'ftr', 'CVW-5 F/A-18E/F', 'csg5'],
+      ['us', 'aew', 'CVW-5 E-2D', 'csg5'], ['us', 'ewac', 'CVW-5 EA-18G', 'csg5'],
       // Japan
       ['jp', 'ftr', 'JASDF 9 AW F-15J', 'naha'], ['jp', 'ftr5', 'JASDF 3 AW F-35A', 'misawa'],
       // PRC
@@ -260,10 +270,9 @@
     // Japanese and Philippine bases depend on the basing-access option (and later, escalation).
     accessOk(G, def) {
       if (def.requires === 'japan') return G.state.access !== 'none' || !!G.state.japanAtWar;
-      if (def.requires === 'ph') return G.state.access === 'full';
+      if (def.requires === 'ph') return G.state.access === 'full' || !!G.state.phOpen;
       return true;
     },
-    factionActive(G, faction) { return faction !== 'jp' || G.state.access !== 'none' || !!G.state.japanAtWar; },
   };
 
   function setupAir(G) {
@@ -277,7 +286,120 @@
       A.addSquadron({ side: SIDE[faction], faction, type, name, base: b, country: COUNTRY[faction] });
     }
     A.setMissiles('red', AIR.missiles.red);
+    if (G.state.force === 'surge') A.st().missiles.red.srbm.left += 20;
     A.setMissiles('blue', AIR.missiles.blue);
+  }
+
+  // ---------- escalation and politics
+  function japanJoins(G, why) {
+    if (G.state.japanAtWar) return;
+    G.state.japanAtWar = true;
+    G.addLog(null, `Japan enters the war: ${why}. Japanese forces join the Allies and US forces may use every base in Japan.`);
+    G.state.pending = G.state.pending || [];
+    G.state.pending.push('japan');
+  }
+
+  function isMainland(t) { return !!t && t.home === 'red' && t.mass === 'mainland'; }
+
+  // Allied AI restraint: strike the mainland only after the PRC escalated, and never past 8.
+  function mainlandOk(G) {
+    const e = G.state.escalation;
+    if (!e) return false;
+    const cost = e.flags['mainland:' + G.state.turn] ? 0 : e.flags.mainland ? 1 : 2;
+    return e.level >= 6 && e.level + cost <= 8;
+  }
+
+  function onStrike(G, side, tile, baseDef) {
+    const S = WG.Space;
+    if (!S || !S.active()) return;
+    if (side === 'red') {
+      const japan = (baseDef && baseDef.region === 'Japan') || (tile && tile.region === 'Yonaguni (Japan)');
+      if (japan) { S.escalate('red', 2, 'PRC strikes Japanese territory', 'strikeJapan'); japanJoins(G, 'Japanese territory was attacked'); }
+      if (baseDef && baseDef.region === 'Guam') S.escalate('red', 2, 'PRC strikes Guam, US sovereign territory', 'strikeGuam');
+      if ((baseDef && baseDef.region === 'Philippines') || (tile && tile.region === 'Batanes (Philippines)')) {
+        S.escalate('red', 1, 'PRC strikes the Philippines', 'strikePH');
+        G.state.phOpen = true;
+      }
+    } else {
+      const mainland = baseDef ? baseDef.side === 'red' && (baseDef.kind === 'offmap' || isMainland(tile)) : isMainland(tile);
+      if (mainland) {
+        const e = G.state.escalation;
+        S.escalate('blue', e.flags.mainland ? 1 : 2, 'Allied strikes on the Chinese mainland', 'mainland:' + G.state.turn);
+        e.flags.mainland = true;
+      }
+    }
+  }
+
+  // ---------- reinforcements
+  const PRC_WAVES = [3, 5, 7, 9, 11, 13];
+  const WAVE_UNITS = [['mech', 'Med CA Bde'], ['inf', 'Light CA Bde'], ['armor', 'Heavy CA Bde'], ['amphmech', 'Amph CA Bde'], ['marine', 'Marine Bde']];
+
+  function reinforce(G, side) {
+    const s = G.state;
+    s.reinf = s.reinf || {};
+    const once = (id, fn) => { if (!s.reinf[id]) { s.reinf[id] = true; fn(); } };
+    const turn = s.turn;
+    const A = WG.Air;
+    const sq = (faction, type, name, base) => A && A.active() && A.addSquadron({ side: SIDE[faction], faction, type, name, base, country: COUNTRY[faction] });
+    if (side === 'red') {
+      const waves = G.state.force === 'surge' ? [3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : PRC_WAVES;
+      waves.forEach((t, i) => {
+        if (turn < t) return;
+        once('prc-wave-' + t, () => {
+          const n = i + 1;
+          const [ta, na] = WAVE_UNITS[i % WAVE_UNITS.length];
+          const [tb, nb] = WAVE_UNITS[(i + 2) % WAVE_UNITS.length];
+          const [tc, nc] = WAVE_UNITS[(i + 1) % WAVE_UNITS.length];
+          ship(G, 'prc', 'amph', `Follow-on Amph Sqn ${n}`, 119.85, 25.55, [[ta === 'armor' ? 'amphmech' : ta, `W${n + 1} ${na}`]]);
+          ship(G, 'prc', 'roro', `Ro-Ro Group ${n}`, 118.20, 24.52, [[tb, `W${n + 1} ${nb}`]]);
+          U(G, 'prc', tc, `W${n + 1} ${nc}`, 119.45, 25.95);
+          G.addLog('red', `Follow-on echelon ${n} reaches the embarkation ports.`);
+        });
+      });
+      if (turn >= 4) once('prc-air-4', () => sq('prc', 'ftr5', 'J-20 Bde (Reinforcing)', 'zhejiang'));
+      if (turn >= 6) once('prc-air-6', () => sq('prc', 'bomber', 'H-6K 2nd Div', 'inland'));
+    } else {
+      // Taiwan mobilizes its reserves.
+      const mob = [[2, ['Taipei', 'Kaohsiung']], [4, ['Taichung', 'Tainan']], [6, ['Taoyuan']]];
+      let k = 4;
+      for (const [t, towns] of mob) {
+        for (const town of towns) {
+          const id = `roc-res-${k++}`;
+          if (turn < t) continue;
+          once(id, () => {
+            const c = G.map.cities.find((x) => x.city.name === town && x.city.owner === 'blue') ||
+              G.map.cities.find((x) => x.city.owner === 'blue' && x.mass === 'taiwan');
+            if (!c) return;
+            const u = U(G, 'roc', 'resinf', `${id.split('-')[2]} Reserve Bde (mobilized)`, c.lon, c.lat);
+            if (u) G.addLog('blue', `${u.name} mobilizes at ${town}`);
+          });
+        }
+      }
+      if (turn >= 3) once('us-3', () => { U(G, 'us', 'ddg', 'DESRON 7', 123.10, 24.00); G.addLog('blue', 'DESRON 7 arrives from Yokosuka.'); });
+      if (turn >= 4) once('us-4', () => {
+        U(G, 'us', 'ssn', 'SSN Group South', 121.60, 20.40);
+        sq('us', 'ftr5', 'F-35A (Kadena reinforcement)', 'kadena');
+        sq('us', 'bomber', 'B-52H (Guam)', 'guam');
+        G.addLog('blue', 'US reinforcements: an SSN group, F-35As to Kadena and B-52s to Guam.');
+      });
+      if (turn >= 5) once('us-5', () => { U(G, 'us', 'usv', 'Replicator USV Grp', 123.10, 23.60); });
+      if (turn >= 8) once('us-8', () => {
+        U(G, 'us', 'ddg', 'DESRON 21', 123.00, 22.55);
+        sq('us', 'ftr5', 'CVW-9 F-35C', 'csg3'); sq('us', 'ftr', 'CVW-9 F/A-18E/F', 'csg3'); sq('us', 'aew', 'CVW-9 E-2D', 'csg3');
+        G.addLog('blue', 'A second carrier strike group, CSG-3 (CVN-72), arrives in the Philippine Sea.');
+      });
+      if (turn >= 10) once('us-10', () => {
+        ship(G, 'us', 'amph', 'ARG / 31 MEU', 123.10, 24.80, [['marine', 'US 31 MEU', { echelon: 'III' }]]);
+        G.addLog('blue', 'The 31st MEU sails for Taiwan.');
+      });
+      if (s.japanAtWar) once('jp-war', () => {
+        U(G, 'jp', 'ddg', 'JMSDF Escort Flotilla 1', 123.15, 25.60);
+        U(G, 'jp', 'ssk', 'JMSDF Sub Grp', 123.00, 25.10);
+        U(G, 'jp', 'ffg', 'JMSDF Escort Div 12', 123.15, 24.80);
+        G.addLog('blue', 'Japanese naval forces sortie toward the Sakishima Islands.');
+      });
+      if (s.escalation && s.escalation.level >= 5) japanJoins(G, 'escalation triggers collective self-defense');
+    }
   }
 
   function layMines(G) {
@@ -329,11 +451,61 @@
     ],
     options: [
       { id: 'turns', label: 'Length (turn = 12 hours)', choices: [['16', '8 days (16 turns)'], ['20', '10 days (20 turns)'], ['28', '14 days (28 turns)']], value: '20' },
+      { id: 'force', label: 'PRC force level', choices: [['estimate', 'Estimate (realistic)'], ['surge', 'Surge (larger sealift, harder for the Allies)']], value: 'estimate' },
       { id: 'access', label: 'Allied basing access', choices: [['full', 'Japan and Philippines'], ['japan', 'Japan only'], ['none', 'None at start']], value: 'full' },
     ],
     unitTypes: ['inf', 'resinf', 'mech', 'armor', 'marine', 'amphmech', 'airborne', 'arty', 'rocket', 'lrocket', 'asm', 'lasm', 'sam', 'ew', 'lm', 'hq',
       'ddg', 'ffg', 'fac', 'cv', 'amph', 'roro', 'mcm', 'usv', 'ssk', 'ssn'],
     air: AIR,
+    space: {
+      red: { isr: 4, satcom: 3, dazzle: 4, asat: 2 },
+      blue: { isr: 4, satcom: 4, dazzle: 3, asat: 1 },
+      escalationStart: 3,
+    },
+    // Japan's own forces only fight once Japan is at war.
+    factionActive(G, faction) { return faction !== 'jp' || !!G.state.japanAtWar; },
+    onStrike,
+    onHostile(G, side, def) {
+      if (side === 'red' && def.faction === 'jp' && WG.Space && WG.Space.active()) {
+        WG.Space.escalate('red', 2, 'PRC attacks Japanese forces', 'strikeJapan');
+        japanJoins(G, 'Japanese forces came under attack');
+      }
+    },
+    onCapture(G, u, t) {
+      if (u.side === 'red' && t.region === 'Yonaguni (Japan)') onStrike(G, 'red', t, null);
+      if (u.side === 'red' && t.region === 'Batanes (Philippines)') onStrike(G, 'red', t, null);
+    },
+    onBaseLost(G, def) {
+      if (def.carrier && def.side === 'blue' && WG.Space && WG.Space.active()) WG.Space.escalate('red', 1, def.name.split(',')[0] + ' sunk with thousands of sailors aboard');
+    },
+    onEscalation(G, before, after) {
+      if (after >= 5) japanJoins(G, 'escalation triggers collective self-defense');
+      if (after >= 6 && !G.state.phOpen) { G.state.phOpen = true; G.addLog(null, 'The Philippines opens its bases to US combat operations.'); }
+    },
+    onTurnStart(G, side) { reinforce(G, side); },
+    statusText(G) {
+      const e = G.state.escalation;
+      if (!e) return '';
+      const cls = e.level >= 8 ? 'bad' : e.level >= 5 ? 'warn' : '';
+      return `<span class="chip esc ${cls}" title="Escalation: 5 brings Japan in, 6 lifts Allied restraint on mainland strikes, 10 is catastrophe">Escalation ${e.level}/10</span>` +
+        (G.state.japanAtWar ? '<span class="chip jp" title="Japan is at war">Japan at war</span>' : '');
+    },
+    // Warn a human before an escalatory strike on Japan or Guam.
+    confirmStrike(G, side, def) {
+      if (side !== 'red' || !def || !['Japan', 'Guam'].includes(def.region)) return Promise.resolve(true);
+      const flag = def.region === 'Japan' ? 'strikeJapan' : 'strikeGuam';
+      if (G.state.escalation && G.state.escalation.flags[flag]) return Promise.resolve(true);
+      return Promise.resolve(window.confirm(def.region === 'Japan'
+        ? 'Striking a base in Japan brings Japan into the war and raises escalation by 2. Proceed?'
+        : 'Striking Guam (US territory) raises escalation by 2. Proceed?'));
+    },
+    aiLandingOk(G, side, t) { return side === 'red' ? t.home !== 'red' : t.home !== 'red' && t.mass === 'taiwan'; },
+    aiReinforcePorts(G, side) {
+      return side === 'blue' ? G.map.cities.filter((c) => c.mass === 'taiwan' && c.city.port && c.city.owner === 'blue').map((c) => c.key) : [];
+    },
+    spaceFaction: { red: 'prc', blue: 'us' },
+    // From turn 4 the PLA's causeway barges let ro-ro ferries unload over the shore next to a beachhead.
+    bargeTurn: 4,
     firstSide: 'red',
     maxTurns: 20,
     supplyRange: 8,
@@ -349,6 +521,7 @@
       const o = opts.options || {};
       G.state.maxTurns = parseInt(o.turns, 10) || 20;
       G.state.access = o.access || 'full';
+      G.state.force = o.force || 'estimate';
       setupROC(G);
       setupUS(G, G.state.access);
       setupJP(G);
@@ -493,6 +666,7 @@
     // PRC fires concentrate on defenders of its landing beaches; the Allies on anything that got ashore.
     aiTargetBonus(G, side, e) {
       const t = G.tile(e.q, e.r);
+      if (side === 'red' && e.faction === 'jp' && !G.state.japanAtWar && !(G.state.aiPlan && G.state.aiPlan.strikeJapan)) return 0;
       if (side === 'red') {
         const areas = (G.state.aiPlan && G.state.aiPlan.areas) || [];
         const nearBeach = areas.some((a) => (G.map.landingAreas[a] || []).some((k) => {
@@ -512,14 +686,24 @@
     },
     // PRC AI decides once whether to hit US bases in Japan and Guam; the Allied AI avoids striking the mainland.
     aiMayStrikeBase(G, side, def) {
+      const lvl = G.state.escalation ? G.state.escalation.level : 0;
       if (side === 'red') {
-        if (def.region === 'Japan' || def.region === 'Guam') return !!(G.state.aiPlan && G.state.aiPlan.strikeJapan) || !!G.state.japanAtWar;
-        return def.region !== 'Philippines' || G.state.access === 'full';
+        if (def.region === 'Japan' || def.region === 'Guam') {
+          const flag = def.region === 'Japan' ? 'strikeJapan' : 'strikeGuam';
+          if (G.state.escalation && G.state.escalation.flags[flag]) return true;
+          return !!(G.state.aiPlan && G.state.aiPlan.strikeJapan) && lvl + 2 <= 7;
+        }
+        if (def.region === 'Philippines') return !!G.state.phOpen && lvl <= 7;
+        return true;
       }
-      return def.kind === 'hex';
+      // Allied restraint: no strikes on the mainland until the PRC has escalated, and never to catastrophe.
+      if (def.side === 'red' && (def.kind === 'offmap' || def.kind === 'hex')) return mainlandOk(G);
+      return true;
     },
     aiMayStrikeTile(G, side, t) {
-      return side === 'red' || t.home !== 'red' || !!t.airbase;
+      if (side === 'red') return true;
+      if (!isMainland(t)) return true;
+      return mainlandOk(G);
     },
 
     cityValue(c, side) { return side === 'red' && c.home === 'blue' ? c.city.vp : 0; },
@@ -532,7 +716,7 @@
         <h3>Naval and amphibious</h3>
         <ul>
           <li><b>Embark:</b> select a ground unit next to (or in port with) a transport and click the transport. <b>Land:</b> select the transport, pick the unit aboard, and click a green hex.
-          Amphibious squadrons can land on beaches, ports and friendly coast; <b>ro-ro ferries only unload in a port you hold</b>.</li>
+          Amphibious squadrons can land on beaches, ports and friendly coast; <b>ro-ro ferries only unload in a port you hold</b>, or, from turn 4 once causeway barges are in place, on coast beside a beachhead.</li>
           <li>Red dashed hexes mean an <b>assault landing</b> against defenders, at reduced strength (marines and amphibious brigades fight better). If the defenders hold, your troops stay aboard.</li>
           <li><b>Supply across the strait:</b> PRC troops on Taiwan draw supply from captured ports (3 + 2 per transport alongside) and beachheads (1 + 2 per amphibious squadron alongside). Keep shipping near the lodgment, where it is exposed.</li>
           <li><b>Mines</b> guard the beach approaches. Ships entering a mined hex may be damaged; minesweepers (MCM) clear their hex and neighbours if they don't move.</li>

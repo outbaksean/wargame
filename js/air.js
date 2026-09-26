@@ -140,12 +140,15 @@
     baseOpen(id, side) {
       const def = this.baseDef(id);
       if (!def || this.owner(id) !== side) return false;
+      if (this.status(id).sunk || (def.arrives && this.G.state.turn < def.arrives)) return false;
       if (!this.accessOk(def, side)) return false;
       return (this.status(id).runway || 0) < 2;
     },
     baseState(id) {
       const def = this.baseDef(id);
       if (!def) return 'gone';
+      if (this.status(id).sunk) return 'sunk';
+      if (def.arrives && this.G.state.turn < def.arrives) return 'en route';
       const r = this.status(id).runway || 0;
       if (!this.accessOk(def, def.side)) return 'restricted';
       return r >= 2 ? 'closed' : r === 1 ? 'damaged' : 'open';
@@ -155,7 +158,7 @@
     squadronsOf(side) { return this.active() ? this.st().squadrons.filter((q) => q.side === side) : []; },
     strength(q) { return 0.3 + (0.7 * q.steps) / AIR_TYPES[q.type].steps; },
     factionActive(q) {
-      const sc = this.G.scenario.air;
+      const sc = this.G.scenario;
       return !sc.factionActive || sc.factionActive(this.G, q.faction);
     },
     tankerPool(side) {
@@ -171,6 +174,7 @@
       const def = this.baseDef(q.base);
       if (!def) return Infinity;
       if (at.longRange) return def.tier === 'far' ? 1 : 0;
+      if (def.organicTankers) return 0;
       return TANKER_COST[def.tier] || 0;
     },
     // Why a squadron cannot fly right now, or '' if it can.
@@ -182,9 +186,12 @@
       if (q.resting) return 'Recovering (long-range sortie)';
       const def = this.baseDef(q.base);
       if (!def) return 'No base';
+      if (this.status(q.base).sunk) return 'Carrier sunk';
+      if (def.arrives && this.G.state.turn < def.arrives) return 'Arrives turn ' + def.arrives;
       if (!this.accessOk(def, q.side)) return 'Basing access denied';
       const r = this.status(q.base).runway || 0;
       if (r >= 2) return 'Runway closed';
+      if (at.drone && def.tier !== 'close' && WG.Space && !WG.Space.satcomOk(q.side)) return 'No SATCOM link for remote drone control';
       if (r === 1 && (this.st().sorties[q.base] || 0) >= 1) return 'Runway damaged (1 sortie/turn)';
       const cost = this.tankerCost(q);
       if (cost > this.tankerPool(q.side) - this.st().tankerUsed[q.side]) return `Needs ${cost} tanker support`;
@@ -380,6 +387,7 @@
         this.cleanup();
         if (q.steps <= 0) return { aborted: true };
       }
+      if (G.scenario.onHostile) G.scenario.onHostile(G, q.side, e);
       let P = at.strike * this.strength(q);
       if (G.type(e).emitter && e.emitting) P *= 1.3;
       const s = G.strikeResult(P, e, { adMult: at.standoff ? 1 : 0.6, lethality: 0.3 });
@@ -407,8 +415,16 @@
       st.sat = (st.sat || 0) + 1;
       const I = D > 0 ? Math.min(0.85, D / (D + P)) : 0;
       const eff = P * (1 - I);
-      const cr = this.sround(eff * 0.14 * rnd());
+      const cr = this.sround(eff * (def.carrier ? 0.1 : 0.14) * rnd());
       st.runway = Math.min(3, (st.runway || 0) + cr);
+      if (def.carrier && st.runway >= 3 && !st.sunk) {
+        st.sunk = true;
+        for (const q of this.st().squadrons) if (q.base === baseId && q.steps > 0) q.steps = 0;
+        this.cleanup();
+        this.G.addLog(def.side, def.name + ' is sunk. Its air wing is lost.');
+        if (this.G.scenario.onBaseLost) this.G.scenario.onBaseLost(this.G, def);
+        return 'carrier sunk';
+      }
       const ground = this.st().squadrons.filter((q) => q.base === baseId && !q.mission && q.steps > 0);
       const exposed = ground.slice(def.shelters || 0);
       let hitSq = 0;
@@ -468,9 +484,17 @@
       if (et.domain === 'land' && !(et.indirect || et.sea || et.ad || et.jam || e.type === 'hq')) return false;
       return (known.get(e.id) || 0) >= 2;
     },
+    // Carriers at sea can only be engaged while our satellites, drones or AEW aircraft track their zone.
+    carrierTracked(side, def) {
+      if (WG.Space && WG.Space.active() && WG.Space.st(side).passes.includes(def.zone)) return true;
+      const cov = this.coverage(side, def.zone);
+      return cov.isr || cov.aew;
+    },
     missileCanHitBase(side, id, def) {
       const d = this.missileDef(side, id);
       if (!def || this.owner(def.id) === side || def.kind === 'carrier') return false;
+      if (this.status(def.id).sunk || (def.arrives && this.G.state.turn < def.arrives)) return false;
+      if (def.carrier) return !!d.antiShip && d.reach.includes(def.tier) && this.carrierTracked(side, def);
       if (def.kind === 'hex') return d.reach.includes('map');
       return d.reach.includes(def.tier);
     },
@@ -488,6 +512,7 @@
       const G = this.G;
       const d = this.missileDef(side, id);
       this.consume(side, id);
+      if (G.scenario.onHostile) G.scenario.onHostile(G, side, e);
       const s = G.strikeResult(d.power, e, { ballistic: !!d.ballistic, lethality: 0.3 });
       const loss = Math.min(3, this.sround(s.exp * rnd()));
       e.steps -= loss;
@@ -512,13 +537,17 @@
       const G = this.G;
       const ut = G.type(u);
       if (!ut.airAssault || u.moved || u.attacked || u.carrier) return [];
-      const t = G.tile(u.q, u.r);
-      if (!t.airbase || this.owner(t.airbase) !== u.side || !this.baseOpen(t.airbase, u.side)) return [];
+      // Paratroopers board at a friendly, open airbase on or next to their hex.
+      const base = WG.Hex.within(u.q, u.r, 1).map((h) => G.tile(h.q, h.r))
+        .find((x) => x && x.airbase && this.owner(x.airbase) === u.side && this.baseOpen(x.airbase, u.side));
+      if (!base) return [];
+      const known = G.intel(u.side);
       const out = [];
       for (const h of Hex.within(u.q, u.r, ut.airAssault)) {
         const x = G.tile(h.q, h.r);
         if (!x || G.isSea(x) || x.home === u.side || !isFinite(G.terr(x).cost[ut.move])) continue;
-        if (G.unitAt(x.q, x.r, null, 'land')) continue;
+        const occ = G.unitAt(x.q, x.r, null, 'land');
+        if (occ && (occ.side === u.side || known.has(occ.id))) continue; // hidden defenders are a nasty surprise
         out.push(x.key);
       }
       return out;
@@ -544,17 +573,34 @@
         G.removeDead();
         return { lost: true, from: base, to: t };
       }
-      G.placeUnit(u, t);
+      let dz = t;
+      const hidden = G.unitAt(t.q, t.r, null, 'land');
+      if (hidden && hidden.side !== u.side) {
+        // Dropped onto an unseen enemy position: heavy losses and scattered into a neighbouring hex.
+        G.reveal(hidden, u.side);
+        u.steps -= 1 + (Math.random() < 0.5 ? 1 : 0);
+        const alt = Hex.neighbors(t.q, t.r).map((n) => G.tile(n.q, n.r))
+          .find((x) => x && !G.isSea(x) && !G.unitAt(x.q, x.r, null, 'land') && isFinite(G.terr(x).cost[G.type(u).move]));
+        if (u.steps <= 0 || !alt) {
+          u.steps = 0;
+          G.addLog(u.side, `${u.name} drops straight onto ${hidden.name} and is destroyed`);
+          G.removeDead();
+          return { lost: true, from: base, to: t };
+        }
+        G.addLog(u.side, `${u.name} drops onto ${hidden.name} and is scattered with heavy losses`);
+        dz = alt;
+      }
+      G.placeUnit(u, dz);
       u.mpLeft = 0;
       u.moved = true;
       u.attacked = true;
       u.entrenched = false;
-      G.state.beachheads[t.key] = u.side;
-      G.addLog(u.side, `${u.name} air-assaults ${G.placeName(t)}${loss ? ` (−${loss} in transit)` : ''}`);
+      G.state.beachheads[dz.key] = u.side;
+      G.addLog(u.side, `${u.name} air-assaults ${G.placeName(dz)}${loss ? ` (−${loss} in transit)` : ''}`);
       G.captureCity(u);
       G.undo = null;
       G.touch();
-      return { loss, from: base, to: t };
+      return { loss, from: base, to: dz };
     },
 
     // ---------- engine hooks

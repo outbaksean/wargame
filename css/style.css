@@ -326,3 +326,28 @@ kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 4
 .zone-label .zl-sub.zl-red { fill: #a5231d; }
 .tracer.air { stroke: #9ecbff; stroke-width: 2.5; }
 .neg { color: var(--bad); }
+
+/* ---------- intel, space & escalation */
+.chip.esc { border-color: #8f7a2c; color: #f3d98a; }
+.chip.esc.warn { border-color: #d9913a; color: #ffc27a; background: rgba(217, 145, 58, 0.12); }
+.chip.esc.bad { border-color: #e0534d; color: #ff9b94; background: rgba(224, 83, 77, 0.15); }
+.chip.jp { border-color: #c9c9c9; color: #eee; }
+.esc-bar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin: 4px 0; }
+.esc-bar i { height: 12px; border-radius: 2px; background: #2a312b; border: 1px solid #3a433b; }
+.esc-bar i.on { background: linear-gradient(90deg, #d9b54a, #e0534d); border-color: #8a3a2a; }
+.esc-bar i.m5, .esc-bar i.m6 { outline: 1px solid #aaa; }
+.esc-bar i.m10 { outline: 1px solid #e0534d; }
+.esc-legend { display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.esc-events { list-style: none; padding: 0; margin: 6px 0; font-size: 12px; }
+.esc-events li { padding: 2px 0 2px 6px; border-left: 2px solid var(--line); margin-bottom: 2px; }
+.esc-events li.red { border-color: var(--red); }
+.esc-events li.blue { border-color: var(--blue); }
+.sat-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin: 3px 0; }
+.sat-row > span:first-child { width: 150px; color: var(--muted); }
+.meter { display: inline-flex; gap: 2px; }
+.meter i { width: 12px; height: 7px; border: 1px solid #6d7a55; border-radius: 1px; }
+.meter i.on { background: #9ecbff; border-color: #9ecbff; }
+.meter.enemy i.on { background: #ff9b94; border-color: #ff9b94; }
+.zonecell.zc-sat { stroke: rgba(255, 230, 120, 0.45); stroke-width: 1.2; stroke-dasharray: 3 3; }
+
+label.speed { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }

@@ -6,7 +6,13 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const cap = Game.cap;
-  const STEP_MS = 120;
+  const SPEEDS = { normal: 1, fast: 0.22, instant: 0 };
+  let speed = (() => { try { return localStorage.getItem('hexcommand.speed') || 'fast'; } catch (e) { return 'fast'; } })();
+  const k = () => (SPEEDS[speed] === undefined ? 0.35 : SPEEDS[speed]);
+  const ms = (n) => Math.round(n * k());
+  const wait = (n) => (k() ? sleep(ms(n)) : Promise.resolve());
+  // Only animate what is inside the current view.
+  const onScreen = (...ts) => ts.some((t) => t && t.x >= view.x - 40 && t.x <= view.x + view.w + 40 && t.y >= view.y - 40 && t.y <= view.y + view.h + 40);
 
   let svg;
   let sel = null, selReach = null, dests = new Set(), zocKeys = new Set(), targets = new Map();
@@ -122,7 +128,8 @@
     return !Game.canAttack(u) || !Game.targets(u, Game.intel(u.side)).length;
   }
 
-  function refresh() {
+  // Map layer: units, fog, towns and marks. Cheap enough to run on every step.
+  function refreshMap() {
     const v = viewer();
     const known = knownFor(v);
     Render.syncUnits(Game.state.units, {
@@ -131,13 +138,28 @@
       selectedId: sel && sel.id,
     });
     Render.updateFog(v && Game.state.fog ? Game.visibleTiles(v) : null);
+  }
+
+  // Everything else is batched into one repaint per animation frame.
+  let panelsPending = false;
+  function refreshPanels() {
+    panelsPending = false;
+    if (!Game.state) return;
     Render.drawCities(Game.map);
-    Render.drawMarks(Game.state, v);
+    Render.drawMarks(Game.state, viewer());
     for (const t of tabs) if (t.onRefresh) t.onRefresh();
     updateTopbar();
     updatePanels();
     updateButtons();
     renderTab();
+  }
+
+  function refresh() {
+    refreshMap();
+    if (!panelsPending) {
+      panelsPending = true;
+      requestAnimationFrame(refreshPanels);
+    }
   }
 
   function updateTopbar() {
@@ -414,15 +436,25 @@
   // ---------- actions (shared by humans and AI)
   async function moveUnit(u, key) {
     const v = viewer();
+    const trail = [];
+    let seen = false;
     const res = await Game.executeMove(u, key, async (mu, from, to) => {
       const known = knownFor(v);
       const vis = isVisibleTo(mu, v, known) || (known && Game.visibleTiles(v).has(from.key) && Game.type(mu).domain !== 'sub');
-      if (vis) {
+      if (!trail.length) trail.push(from);
+      trail.push(to);
+      if (vis) seen = true;
+      if (vis && speed === 'normal' && onScreen(from, to)) {
         Render.showUnit(mu);
-        await Render.animateMove(mu, from, to, STEP_MS);
+        await Render.animateMove(mu, from, to, 120);
+        refreshMap();
       }
-      refresh();
     });
+    // Faster modes: one quick glide along the whole path.
+    if (seen && speed !== 'normal' && k() && Game.alive(u) && onScreen(...trail)) {
+      Render.showUnit(u);
+      await Render.animatePath(u, trail, Math.min(ms(900), ms(110) * (trail.length - 1)));
+    }
     if (res && res.contact && res.halted && u.side === v) setBanner('Contact! Movement halted.', 2200);
     Game.save();
     refresh();
@@ -439,22 +471,24 @@
   async function attack(att, def) {
     const v = viewer();
     const known = knownFor(v);
-    const show = isVisibleTo(att, v, known) || isVisibleTo(def, v, known);
     const aT = Game.tile(att.q, att.r), dT = Game.tile(def.q, def.r);
+    const show = (isVisibleTo(att, v, known) || isVisibleTo(def, v, known)) && onScreen(aT, dT);
     const mode = Game.attackMode(att, def);
     const ranged = mode !== 'land' || Game.combatOdds(att, def).ranged;
     if (show) {
       Render.showUnit(att);
-      if (ranged) await Render.tracer(aT, dT, 380, mode === 'land' ? 'tracer' : 'tracer missile');
-      else await Render.lunge(att, aT, dT);
+      if (k()) {
+        if (ranged) await Render.tracer(aT, dT, ms(380), mode === 'land' ? 'tracer' : 'tracer missile');
+        else await Render.lunge(att, aT, dT, ms(260));
+      }
     }
     const res = Game.resolveAttack(att, def);
     if (show || def.side === v) await showCombatFx(att, def, res, aT, dT);
-    if (res.retreat) await Render.animateMove(def, res.retreat.from, res.retreat.to, 220);
-    if (res.advance) { await sleep(120); await Render.animateMove(att, res.advance.from, res.advance.to, 220); }
+    if (res.retreat) await Render.animateMove(def, res.retreat.from, res.retreat.to, ms(220));
+    if (res.advance) { await wait(120); await Render.animateMove(att, res.advance.from, res.advance.to, ms(220)); }
     Game.save();
     refresh();
-    await sleep(show ? 380 : 0);
+    if (show) await wait(380);
     return res;
   }
 
@@ -466,13 +500,13 @@
     if (def && def.side !== u.side) {
       const from = Game.tile(ship.q, ship.r);
       Game.reveal(def, u.side);
-      if (show) await Render.tracer(from, t, 300);
+      if (show && k()) await Render.tracer(from, t, ms(300));
       const res = Game.resolveLanding(u, ship, def);
       if (show || def.side === v) await showCombatFx(u, def, res, from, t);
-      if (res.retreat) await Render.animateMove(def, res.retreat.from, res.retreat.to, 220);
+      if (res.retreat) await Render.animateMove(def, res.retreat.from, res.retreat.to, ms(220));
       Game.save();
       refresh();
-      await sleep(show ? 380 : 0);
+      if (show) await wait(380);
       return res;
     }
     Game.disembark(u, ship, t);
@@ -480,7 +514,7 @@
     refresh();
     if (show) {
       Render.showUnit(u);
-      await Render.animateMove(u, Game.tile(ship.q, ship.r), t, 260);
+      await Render.animateMove(u, Game.tile(ship.q, ship.r), t, ms(260));
     }
     refresh();
     return { landed: true };
@@ -498,9 +532,9 @@
     const v = viewer();
     if (!to) return;
     const seen = !v || !Game.state.fog || Game.visibleTiles(v).has(to.key) || Game.state.side === v;
-    if (!seen) return;
+    if (!seen || !k() || !onScreen(to)) return;
     const origin = from || { x: to.x + (Game.state.side === 'red' ? -520 : 520), y: to.y - 380 };
-    await Render.tracer(origin, to, 420, kind === 'missile' ? 'tracer missile' : 'tracer air');
+    await Render.tracer(origin, to, ms(420), kind === 'missile' ? 'tracer missile' : 'tracer air');
     Render.flash(to);
   }
 
@@ -511,7 +545,7 @@
     const res = WG.Air.doAirAssault(u, key);
     Game.save();
     refresh();
-    if (res.loss) Render.floatText(t, `−${res.loss}`, '#ff8a80');
+    if (res.loss) Render.floatText(res.to || t, `−${res.loss}`, '#ff8a80');
     return res;
   }
 
@@ -527,14 +561,14 @@
     refresh();
     if (s.over) { showGameOver(); return; }
     const side = s.side;
-    const aiFactions = Game.factionsOf(side).filter((f) => Game.controller(f) === 'ai');
+    const aiFactions = Game.factionsOf(side).filter((f) => Game.controller(f) === 'ai' && Game.factionActive(f));
     const humans = Game.humanFactions(side);
     if (aiFactions.length) {
       busy = true;
       const names = aiFactions.map((f) => Game.scenario.factions[f].name).join(' & ');
       setBanner(`${names} (AI) ${aiFactions.length > 1 ? 'are' : 'is'} moving…`);
       refresh();
-      await sleep(350);
+      await wait(350);
       await AI.takeTurn(side, aiFactions, { alive: () => my === token && !Game.state.over, ...actions });
       if (my !== token) return;
       busy = false;
@@ -842,6 +876,7 @@
       <p class="sub">Operational hex wargame with NATO symbology. Runs entirely in your browser.</p>
       <div class="scen-list">${list.map((s) => `<button class="scen ${s === current ? 'on' : ''}" data-scen="${s.id}"><b>${esc(s.name)}</b><span>${esc(s.description)}</span></button>`).join('')}</div>
       <div class="form" id="f-form">${scenarioForm(current)}</div>
+      <label class="speed">Animation speed <select id="f-speed">${Object.keys(SPEEDS).map((x) => `<option value="${x}" ${x === speed ? 'selected' : ''}>${x[0].toUpperCase() + x.slice(1)}</option>`).join('')}</select></label>
       <div class="btns">
         ${inGame ? '<button id="f-resume">Resume</button>' : ''}
         ${hasSave ? '<button id="f-continue">Continue saved game</button>' : ''}
@@ -861,6 +896,10 @@
           bindForm();
         };
       });
+      $('#f-speed').onchange = (e) => {
+        speed = e.target.value;
+        try { localStorage.setItem('hexcommand.speed', speed); } catch (err) { /* ignore */ }
+      };
       if (inGame) $('#f-resume').onclick = closeModal;
       if (hasSave) $('#f-continue').onclick = () => { closeModal(); continueGame(); };
       $('#f-start').onclick = () => {

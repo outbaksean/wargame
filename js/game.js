@@ -67,6 +67,7 @@
 
     faction(u) { return this.scenario.factions[u.faction] || { name: cap(u.side), side: u.side }; },
     controller(faction) { return this.state.controllers[faction] || 'ai'; },
+    factionActive(faction) { return !this.scenario.factionActive || this.scenario.factionActive(this, faction); },
     factionsOf(side) { return Object.keys(this.scenario.factions).filter((f) => this.scenario.factions[f].side === side); },
     humanFactions(side) { return this.factionsOf(side).filter((f) => this.controller(f) === 'human'); },
     isHuman(u) { return this.controller(u.faction) === 'human'; },
@@ -409,6 +410,7 @@
         this.state.capturedAt = this.state.capturedAt || {};
         this.state.capturedAt[t.key] = this.state.turn;
         this.addLog(u.side, `${u.name} captures ${t.city.name}${t.city.capital ? ' (capital)' : ''}`);
+        if (this.scenario.onCapture) this.scenario.onCapture(this, u, t);
         // Enemy ships caught in a captured port are lost.
         const ship = this.unitAt(t.q, t.r, null, 'sea');
         if (ship && ship.side !== u.side) {
@@ -490,7 +492,10 @@
         if (!t || this.isSea(t)) continue;
         if (!isFinite(this.terr(t).cost[ut.move]) && !t.road) continue;
         if (st.portOnly) {
-          if (!(t.city && t.city.port && t.city.owner === u.side)) continue;
+          const port = t.city && t.city.port && t.city.owner === u.side;
+          const barge = this.scenario.bargeTurn && this.state.turn >= this.scenario.bargeTurn &&
+            t.home !== u.side && this.isCoastalLanding(t, u.side) && !t.beach;
+          if (!port && !barge) continue;
         } else if (!this.isCoastalLanding(t, u.side)) continue;
         const occ = this.unitAt(t.q, t.r, null, 'land');
         if (occ && occ.side === u.side) continue;
@@ -678,6 +683,7 @@
     },
 
     resolveAttack(att, def) {
+      if (this.scenario.onHostile) this.scenario.onHostile(this, att.side, def);
       const mode = this.attackMode(att, def);
       return mode === 'land' ? this.resolveCombat(att, def) : this.resolveStrike(att, def, mode);
     },
@@ -816,6 +822,7 @@
       }
       this.state.units = this.state.units.filter((u) => u.steps > 0);
       for (const m of this.modules) if (m.unitsRemoved) m.unitsRemoved(dead);
+      if (this.scenario.onUnitsLost) this.scenario.onUnitsLost(this, dead);
       this.touch();
     },
 

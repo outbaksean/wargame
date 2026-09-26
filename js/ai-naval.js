@@ -194,7 +194,8 @@
         const u = g.byId(id);
         if (!u || u.moved) continue;
         const known = g.intel(side);
-        const opts = g.landingOptions(ship, u, known).filter((o) => g.map.tiles.get(o.key).home !== side);
+        const okFn = g.scenario.aiLandingOk || ((gg, sd, t) => t.home !== sd);
+        const opts = g.landingOptions(ship, u, known).filter((o) => okFn(g, side, g.map.tiles.get(o.key)));
         let best = null;
         for (const o of opts) {
           const t = g.map.tiles.get(o.key);
@@ -235,20 +236,28 @@
       if (pending.length) {
         if (await this.tryLand(ship, side, ctx)) return;
         let goals;
-        const lodg = this.lodgments(side).filter((l) => l.port || !st.portOnly);
+        const barges = g.scenario.bargeTurn && g.state.turn >= g.scenario.bargeTurn;
+        const lodg = this.lodgments(side).filter((l) => l.port || !st.portOnly || barges);
         const area = g.state.aiPlan && g.state.aiPlan.assign && g.state.aiPlan.assign[ship.id];
         if (st.portOnly) {
           const cap = g.state.capturedAt || {};
-          const ports = lodg.filter((l) => l.port && (cap[l.t.key] || 0) < g.state.turn &&
-            !enemies.some((e) => UNIT_TYPES[e.type].domain === 'land' && Hex.distance(e.q, e.r, l.t.q, l.t.r) <= 2));
-          if (!ports.length) return; // wait in port until a harbor is taken
+          const ports = lodg.filter((l) => (l.port ? (cap[l.t.key] || 0) < g.state.turn : barges) &&
+            !enemies.some((e) => UNIT_TYPES[e.type].domain === 'land' && Hex.distance(e.q, e.r, l.t.q, l.t.r) <= 1));
+          if (!ports.length) return; // wait in port until a harbor is taken or barges are in place
           goals = [];
-          for (const l of ports) goals.push(l.t.key, ...this.seaAdjacent(l.t));
+          for (const l of ports) {
+            if (l.port) goals.push(l.t.key);
+            goals.push(...this.seaAdjacent(l.t));
+            if (!l.port) for (const n of Hex.neighbors(l.t.q, l.t.r)) { const nt = g.tile(n.q, n.r); if (nt && !g.isSea(nt)) goals.push(...this.seaAdjacent(nt)); }
+          }
         } else if (area && !ship.aiLanded) {
           goals = this.areaGoals(area, side);
         } else if (lodg.length) {
           goals = [];
           for (const l of lodg) goals.push(...this.seaAdjacent(l.t));
+        } else if (g.scenario.aiReinforcePorts && g.scenario.aiReinforcePorts(g, side).length) {
+          goals = [];
+          for (const k of g.scenario.aiReinforcePorts(g, side)) { goals.push(k); goals.push(...this.seaAdjacent(g.map.tiles.get(k))); }
         } else {
           goals = this.areaGoals((g.state.aiPlan && g.state.aiPlan.areas[0]) || 'north', side);
         }

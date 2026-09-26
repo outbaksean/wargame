@@ -34,7 +34,7 @@
     hq:      { name: 'Headquarters', short: 'HQ', icon: 'hq', domain: 'land', move: 'wheeled', mp: 5, atk: 1, def: 2, range: 1, vision: 2, steps: 2, echelon: 'X', command: 3, value: 1.5 },
     marine:  { name: 'Marines', short: 'MAR', icon: 'inf', mod: 'amphib', domain: 'land', move: 'foot', mp: 3, atk: 5, def: 6, range: 1, vision: 2, steps: 4, amphib: 0.8, value: 1.1 },
     amphmech:{ name: 'Amphibious Mech', short: 'AMPH', icon: 'mech', mod: 'amphib', domain: 'land', move: 'tracked', mp: 5, atk: 6, def: 5, range: 1, vision: 2, steps: 4, armored: true, amphib: 0.7, value: 1.2 },
-    airborne:{ name: 'Airborne', short: 'ABN', icon: 'inf', mod: 'airborne', domain: 'land', move: 'foot', mp: 3, atk: 4, def: 5, range: 1, vision: 2, steps: 3, airAssault: 16, value: 1.0 },
+    airborne:{ name: 'Airborne', short: 'ABN', icon: 'inf', mod: 'airborne', domain: 'land', move: 'foot', mp: 3, atk: 4, def: 5, range: 1, vision: 2, steps: 3, airAssault: 30, value: 1.0 },
     rocket:  { name: 'Rocket Artillery', short: 'MLRS', icon: 'rocket', domain: 'land', move: 'wheeled', mp: 5, atk: 8, def: 2, range: 6, vision: 2, steps: 3, indirect: true, value: 1.2 },
     lrocket: { name: 'Long-Range Rocket Artillery', short: 'PHL', icon: 'rocket', domain: 'land', move: 'wheeled', mp: 5, atk: 8, def: 2, range: 16, vision: 2, steps: 3, indirect: true, value: 1.3 },
     lasm:    { name: 'Long-Range Coastal Missiles', short: 'CDCM-LR', icon: 'asm', domain: 'land', move: 'wheeled', mp: 5, atk: 0, def: 2, range: 0, vision: 2, steps: 3, sea: { atk: 9, range: 25, kind: 'missile', ammo: 4 }, value: 1.4 },

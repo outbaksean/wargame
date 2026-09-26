@@ -203,13 +203,11 @@
     },
 
     // Air picture overlay: tinted cells, zone borders and labels.
-    drawAirPicture(cells, borders, labels) {
+    // zones: [{ id, cls }] - each zone is filled as one compound path.
+    drawAirPicture(zones, borders, labels) {
       const L = this.layers.zones;
       L.replaceChildren();
-      for (const c of cells) {
-        const t = this.map.tiles.get(c.key);
-        el('polygon', { points: Hex.points(S + 0.4, t.x, t.y), class: 'zonecell ' + c.cls }, L);
-      }
+      for (const z of zones) el('path', { d: this.zonePath(this.map, z.id), class: 'zonecell ' + z.cls }, L);
       if (borders) el('path', { d: borders, class: 'zone-border' }, L);
       for (const lb of labels || []) {
         const g = el('g', { transform: `translate(${lb.x},${lb.y})`, class: 'zone-label' }, L);
@@ -217,6 +215,19 @@
         t1.textContent = lb.name;
         if (lb.sub) { const t2 = el('text', { y: 16, class: 'zl-sub ' + (lb.cls || '') }, g); t2.textContent = lb.sub; }
       }
+    },
+
+    zonePath(map, id) {
+      map._zonePaths = map._zonePaths || {};
+      if (!map._zonePaths[id]) {
+        let d = '';
+        for (const k of map.zones[id].keys) {
+          const t = map.tiles.get(k);
+          d += 'M' + Hex.points(S + 0.4, t.x, t.y).split(' ').join('L') + 'Z';
+        }
+        map._zonePaths[id] = d;
+      }
+      return map._zonePaths[id];
     },
 
     zoneBorders(map) {
@@ -364,6 +375,20 @@
       return tween(ms, (k) => {
         const e = ease(k);
         this.place(g, from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e);
+      });
+    },
+
+    // Glide along a sequence of tiles in one tween.
+    animatePath(u, tiles, ms) {
+      const g = this.unitEls.get(u.id);
+      if (!g || tiles.length < 2) return Promise.resolve();
+      const n = tiles.length - 1;
+      return tween(ms, (k) => {
+        const f = ease(k) * n;
+        const i = Math.min(n - 1, Math.floor(f));
+        const t = f - i;
+        const a = tiles[i], b = tiles[i + 1];
+        this.place(g, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
       });
     },
 

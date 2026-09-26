@@ -62,6 +62,8 @@
 
     async takeTurn(side, factions, ctx) {
       const G = WG.Game;
+      factions = factions.filter((f) => G.factionActive(f));
+      if (!factions.length) return;
       const mine = (u) => u.side === side && factions.includes(u.faction) && !u.carrier;
       const claimed = new Map();
       const plan = { side, factions, claimed, mine };
@@ -178,8 +180,9 @@
         return f.length ? { mode: 'follow', key: this.centroidKey(f, ut.move, side) } : { mode: 'hold' };
       }
 
-      // Garrison a threatened town we are standing in.
+      // Never leave the capital empty; garrison a threatened town we are standing in.
       const t = G.tile(u.q, u.r);
+      if (t.city && t.city.capital && t.city.owner === side) return { mode: 'hold' };
       if (t.city && t.city.owner === side && landEnemies.some((e) => Hex.distance(e.q, e.r, u.q, u.r) <= 4)) {
         return { mode: 'hold' };
       }

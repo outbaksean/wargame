@@ -49,10 +49,12 @@
   }
 
   // ---------- air picture overlay
+  let lastSig = null;
   function drawPicture(highlightZone) {
     const g = G(), air = A();
-    if (!g.map || !g.map.zones || !air.active()) { Render.drawAirPicture([], '', []); return; }
-    if (!picture && !highlightZone) { Render.drawAirPicture([], '', []); return; }
+    const clear = () => { if (lastSig !== '') { Render.drawAirPicture([], '', []); lastSig = ''; } };
+    if (!g.map || !g.map.zones || !air.active()) { clear(); return; }
+    if (!picture && !highlightZone) { clear(); return; }
     const v = viewSide();
     const cells = [];
     const labels = [];
@@ -62,12 +64,16 @@
       let cls = c.owner ? 'zc-' + c.owner : '';
       if (z.id === highlightZone) cls += ' zc-hl';
       if (cov.isr || cov.aew) cls += ' zc-isr';
-      if (cls.trim()) for (const k of z.keys) cells.push({ key: k, cls });
+      if (WG.Space && WG.Space.active() && WG.Space.st(v).passes.includes(z.id)) cls += ' zc-sat';
+      if (cls.trim()) cells.push({ id: z.id, cls });
       const bits = [];
       if (c.blue) bits.push(`▲${Math.round(c.blue)}`);
       if (c.red) bits.push(`▼${Math.round(c.red)}`);
       labels.push({ x: z.x, y: z.y, name: z.name, sub: bits.join('  '), cls: c.owner ? 'zl-' + c.owner : '' });
     }
+    const sig = JSON.stringify([cells, labels.map((l) => l.sub + l.cls)]);
+    if (sig === lastSig) return;
+    lastSig = sig;
     Render.drawAirPicture(cells, Render.zoneBorders(g.map), labels);
   }
 
@@ -268,7 +274,7 @@
     visible: () => A().active(),
     render: renderAir,
     onRefresh: () => { if (A().active()) drawPicture(); },
-    onNewGame: () => { picture = true; drawPicture(); },
+    onNewGame: () => { picture = true; lastSig = null; drawPicture(); },
     helpHtml: () => (A().active() ? `
       <h3>Air power</h3>
       <ul>
@@ -277,7 +283,7 @@
         <li><b>CAP</b> contests an air zone. The side with 1.5× the fighter strength controls it: +20% to its ground attacks there, and its fighters intercept enemy strikes and drones.</li>
         <li><b>Strike</b> hits a detected unit or airbase. <b>AEW</b>, <b>drones (ISR)</b> and <b>jamming</b> shape what each side can see and target. <b>ASW patrols</b> hunt submarines.</li>
         <li>Missile and bomb hits on a base damage its <b>runway</b> (damaged: one sortie per turn; closed: none; repaired a level per turn) and destroy aircraft caught on the ground beyond its hardened shelters.</li>
-        <li><b>Airborne</b> units at a friendly airbase can air-assault any empty hex within 16. Enemy air defenses and fighters over the drop zone cause losses in transit.</li>
+        <li><b>Airborne</b> units at a friendly airbase can air-assault any empty hex within 30. Enemy air defenses and fighters over the drop zone cause losses in transit.</li>
       </ul>` : ''),
   });
   WG.UI.registerTab({ id: 'strike', label: 'Missiles', visible: () => A().active(), render: renderStrike });
@@ -299,7 +305,7 @@
     if (!opts.length) return [];
     return [{
       label: 'Air assault',
-      title: 'Drop anywhere within 16 hexes. Losses depend on enemy air defense and fighters over the drop zone.',
+      title: 'Drop anywhere within 30 hexes. Losses depend on enemy air defense and fighters over the drop zone.',
       run(unit) {
         const keys = air.airAssaultOptions(unit);
         UI().setMode({
