@@ -98,7 +98,8 @@
       const ut = UNIT_TYPES[u.type];
       const o = G.odds(u, e, from);
       const et = UNIT_TYPES[e.type];
-      let s = o.expDef * et.value - o.expAtt * ut.value * 1.3;
+      const bonus = G.scenario.aiTargetBonus ? G.scenario.aiTargetBonus(G, u.side, e) : 1;
+      let s = o.expDef * et.value * bonus - o.expAtt * ut.value * 1.3;
       if (o.expDef >= e.steps) s += 1.5 * et.value;
       const t = G.tile(e.q, e.r);
       if (t.city && t.city.vp) s += t.city.vp * 0.4;
@@ -184,10 +185,12 @@
       }
 
       const sc = G.scenario;
+      const react = sc.aiReactRange ? sc.aiReactRange(G, u) : Infinity;
       let best = null;
       for (const c of G.map.cities) {
         const d = this.field(c.key, ut.move, side).get(here);
         if (d === undefined) continue;
+        if (c.city.owner === side && d > react) continue;
         const vp = c.city.vp || (sc.cityValue ? sc.cityValue(c, side) : 0);
         if (!vp) continue;
         let v;
@@ -206,7 +209,7 @@
         let n = null;
         for (const e of landEnemies) {
           const d = this.field(Hex.key(e.q, e.r), ut.move, side).get(here);
-          if (d !== undefined && (!n || d < n.d)) n = { e, d };
+          if (d !== undefined && d <= react && (!n || d < n.d)) n = { e, d };
         }
         if (n) {
           const key = Hex.key(n.e.q, n.e.r);
@@ -269,7 +272,21 @@
         const s = this.evalPos(u, k, goal, enemies, side);
         if (s > bestS) { bestS = s; bestK = k; }
       }
-      if (bestK !== here) await ctx.move(u, bestK);
+      if (bestK !== here) {
+        const res = await ctx.move(u, bestK);
+        // Contact halted us early: re-plan once with what we can now see.
+        if (res && res.halted && res.contact && G.alive(u) && u.mpLeft > 0 && ctx.alive()) {
+          const k2 = Hex.key(u.q, u.r);
+          const known2 = G.intel(side);
+          const en2 = this.knownEnemies(side);
+          let bk = k2, bs = this.evalPos(u, k2, goal, en2, side) + 0.3;
+          for (const k of G.destinations(u, G.reachable(u, known2), known2)) {
+            const s2 = this.evalPos(u, k, goal, en2, side);
+            if (s2 > bs) { bs = s2; bk = k; }
+          }
+          if (bk !== k2) await ctx.move(u, bk);
+        }
+      }
       // Moving may have revealed a juicy target.
       if (ctx.alive() && G.alive(u) && !FIRE_FIRST(UNIT_TYPES[u.type])) await this.tryAttack(u, side, ctx, true);
     },

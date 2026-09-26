@@ -81,7 +81,7 @@
     U(G, 'roc', 'inf', '153 Inf Bde', 121.08, 25.03, E);
     U(G, 'roc', 'marine', '66 Marine Bde', 121.45, 25.10, E);
     U(G, 'roc', 'inf', 'Capital Def Bde', 121.56, 25.04, E);
-    U(G, 'roc', 'inf', '1 Reserve Bde', 121.70, 25.10, E);
+    U(G, 'roc', 'resinf', '1 Reserve Bde', 121.70, 25.10, E);
     U(G, 'roc', 'arty', '21 Arty Cmd', 121.20, 24.88, Object.assign({}, E, { echelon: 'III' }));
     U(G, 'roc', 'rocket', 'HIMARS Bn', 121.35, 24.85, B);
     U(G, 'roc', 'sam', 'Patriot PAC-3 Bn', 121.50, 25.00, B);
@@ -93,7 +93,7 @@
     U(G, 'roc', 'mech', '234 Mech Bde', 120.62, 24.22, E);
     U(G, 'roc', 'armor', '586 Armor Bde', 120.58, 24.06, E);
     U(G, 'roc', 'inf', '104 Inf Bde', 120.45, 23.75, E);
-    U(G, 'roc', 'inf', '2 Reserve Bde', 120.45, 23.50, E);
+    U(G, 'roc', 'resinf', '2 Reserve Bde', 120.45, 23.50, E);
     U(G, 'roc', 'arty', '58 Arty Cmd', 120.72, 24.02, Object.assign({}, E, { echelon: 'III' }));
     U(G, 'roc', 'rocket', 'Thunderbolt MLRS Bn', 120.78, 24.20, B);
     U(G, 'roc', 'sam', 'Tien Kung III Bn C', 120.66, 24.28, B);
@@ -104,7 +104,7 @@
     U(G, 'roc', 'armor', '564 Armor Bde', 120.40, 22.78, E);
     U(G, 'roc', 'marine', '77 Marine Bde', 120.30, 22.62, E);
     U(G, 'roc', 'marine', '99 Marine Bde', 120.35, 22.72, E);
-    U(G, 'roc', 'inf', '3 Reserve Bde', 120.50, 22.66, E);
+    U(G, 'roc', 'resinf', '3 Reserve Bde', 120.50, 22.66, E);
     U(G, 'roc', 'arty', '43 Arty Cmd', 120.35, 22.92, Object.assign({}, E, { echelon: 'III' }));
     U(G, 'roc', 'sam', 'Patriot PAC-3 Bn S', 120.36, 22.70, B);
     U(G, 'roc', 'asm', 'Harpoon CDCM Bn S', 120.22, 22.90, B);
@@ -112,7 +112,7 @@
     // East and outlying islands.
     U(G, 'roc', 'inf', 'Hualien Def Cmd', 121.60, 23.98, E);
     U(G, 'roc', 'inf', 'Taitung Def Cmd', 121.14, 22.76, E);
-    U(G, 'roc', 'inf', 'Yilan Reserve Bde', 121.75, 24.76, E);
+    U(G, 'roc', 'resinf', 'Yilan Reserve Bde', 121.75, 24.76, E);
     U(G, 'roc', 'inf', 'Penghu Def Cmd', 119.57, 23.57, E);
     U(G, 'roc', 'asm', 'HF-3 Btry Penghu', 119.62, 23.66, Object.assign({}, E, { echelon: 'I' }));
     U(G, 'roc', 'inf', 'Kinmen Def Cmd', 118.35, 24.44, E);
@@ -146,6 +146,7 @@
     ship(G, 'prc', 'amph', 'ATF North 1', 119.95, 25.45, [['amphmech', '5 Amph CA Bde']]);
     ship(G, 'prc', 'amph', 'ATF North 2', 120.00, 25.30, [['marine', '1 Marine Bde']]);
     ship(G, 'prc', 'amph', 'ATF North 3', 119.92, 25.62, [['amphmech', '124 Amph CA Bde']]);
+    ship(G, 'prc', 'amph', 'ATF North 4', 120.12, 25.60, [['marine', '4 Marine Bde']]);
     U(G, 'prc', 'ddg', '052D SAG North', 120.08, 25.42);
     U(G, 'prc', 'ffg', '054A Escort North', 120.05, 25.55);
     U(G, 'prc', 'mcm', 'MCM Group North', 120.10, 25.30);
@@ -153,6 +154,7 @@
     ship(G, 'prc', 'amph', 'ATF South 1', 118.98, 24.62, [['amphmech', '14 Amph CA Bde']]);
     ship(G, 'prc', 'amph', 'ATF South 2', 118.85, 24.50, [['marine', '2 Marine Bde']]);
     ship(G, 'prc', 'amph', 'ATF South 3', 119.08, 24.75, [['amphmech', '91 Amph CA Bde']]);
+    ship(G, 'prc', 'amph', 'ATF South 4', 119.20, 24.68, [['amphmech', '1 Amph CA Bde']]);
     U(G, 'prc', 'ddg', '052D SAG South', 119.10, 24.60);
     U(G, 'prc', 'ffg', '054A Escort South', 118.98, 24.45);
     U(G, 'prc', 'mcm', 'MCM Group South', 119.15, 24.50);
@@ -181,6 +183,8 @@
     U(G, 'prc', 'amphmech', '74 GA 125 Amph Bde', 119.12, 25.23);
     U(G, 'prc', 'mech', '73 GA 86 Med Bde', 118.12, 24.52);
     U(G, 'prc', 'inf', '31 GA Light Bde', 119.78, 25.52);
+    U(G, 'prc', 'armor', '73 GA 3 Heavy Bde', 118.70, 24.90);
+    U(G, 'prc', 'mech', '71 GA 35 Med Bde', 119.30, 25.45);
     U(G, 'prc', 'airborne', '127 Airborne Bde', 119.44, 25.66);
     U(G, 'prc', 'airborne', '128 Airborne Bde', 118.59, 24.80);
     U(G, 'prc', 'lrocket', 'PHL-16 Bde North', 119.55, 25.55);
@@ -191,6 +195,89 @@
     U(G, 'prc', 'sam', 'HQ-9 Bde North', 119.40, 25.62, { echelon: 'X' });
     U(G, 'prc', 'sam', 'HQ-9 Bde South', 118.70, 24.85, { echelon: 'X' });
     U(G, 'prc', 'ew', 'ISF EW Regt', 119.70, 25.50, { echelon: 'III' });
+  }
+
+  // ---------- air order of battle (abstract squadrons of ~12-24 aircraft)
+  const AIR = {
+    // Off-map base boxes. tier sets tanker needs; requires = political access.
+    bases: [
+      { id: 'kadena', name: 'Kadena AB (Okinawa)', side: 'blue', tier: 'close', shelters: 2, ad: 6, bmd: 4, country: 'JP', requires: 'japan', region: 'Japan' },
+      { id: 'naha', name: 'Naha AB (Okinawa)', side: 'blue', tier: 'close', shelters: 1, ad: 4, bmd: 2, country: 'JP', requires: 'japan', region: 'Japan' },
+      { id: 'iwakuni', name: 'MCAS Iwakuni', side: 'blue', tier: 'medium', shelters: 2, ad: 3, bmd: 2, country: 'JP', requires: 'japan', region: 'Japan' },
+      { id: 'misawa', name: 'Misawa AB', side: 'blue', tier: 'medium', shelters: 2, ad: 3, bmd: 1, country: 'JP', requires: 'japan', region: 'Japan' },
+      { id: 'luzon', name: 'EDCA sites (N. Luzon)', side: 'blue', tier: 'medium', shelters: 0, ad: 2, bmd: 0, country: 'PH', requires: 'ph', region: 'Philippines' },
+      { id: 'guam', name: 'Andersen AFB (Guam)', side: 'blue', tier: 'far', shelters: 1, ad: 5, bmd: 5, country: 'US', region: 'Guam' },
+      { id: 'zhejiang', name: 'Zhejiang bases (Luqiao, Ningbo)', side: 'red', tier: 'close', shelters: 3, ad: 6, bmd: 2, country: 'CN', region: 'PRC' },
+      { id: 'guangdong', name: 'Guangdong bases (Jieyang, Shantou)', side: 'red', tier: 'close', shelters: 3, ad: 6, bmd: 2, country: 'CN', region: 'PRC' },
+      { id: 'inland', name: 'Inland bomber bases (Anqing, Neixiang)', side: 'red', tier: 'medium', shelters: 4, ad: 5, bmd: 3, country: 'CN', region: 'PRC' },
+    ],
+    hexBaseInfo: {
+      hualien: { shelters: 4, ad: 3 }, // Chiashan mountain hangars
+      taitung: { shelters: 2 },
+      longtian: { shelters: 2, ad: 4 }, huian: { shelters: 2, ad: 4 }, jinjiang: { shelters: 1, ad: 3 },
+      changle: { shelters: 1, ad: 3 }, xiamen: { shelters: 1, ad: 3 },
+    },
+    squadrons: [
+      // Taiwan
+      ['roc', 'ftr', 'ROCAF 4 TFW F-16V', 'chiayi'], ['roc', 'ftr', 'ROCAF 5 TFW F-16V', 'hualien'], ['roc', 'ftr', 'ROCAF 5 TFW F-16V (2)', 'hualien'],
+      ['roc', 'ftr', 'ROCAF 3 TFW IDF', 'cck'], ['roc', 'ftr', 'ROCAF 1 TFW IDF', 'tainan'], ['roc', 'ftr', 'ROCAF 2 TFW Mirage', 'hsinchu'],
+      ['roc', 'aew', 'ROCAF E-2K', 'pingtung'], ['roc', 'mpa', 'ROCN P-3C', 'pingtung'], ['roc', 'uav', 'ROCAF MQ-9B', 'taitung'],
+      // United States
+      ['us', 'ftr', '18 Wing F-15EX', 'kadena'], ['us', 'ftr5', 'F-22 Det (Kadena)', 'kadena'], ['us', 'aew', 'E-3 AWACS (Kadena)', 'kadena'],
+      ['us', 'tanker', 'KC-135 (Kadena)', 'kadena'], ['us', 'mpa', 'P-8A Det (Kadena)', 'kadena'], ['us', 'uav', 'MQ-9 (Kadena)', 'kadena'],
+      ['us', 'ftr5', 'MAG-12 F-35B', 'iwakuni'], ['us', 'ftr', '35 FW F-16 (SEAD)', 'misawa'],
+      ['us', 'bomber', 'B-1B (Guam)', 'guam'], ['us', 'tanker', 'KC-46 (Guam)', 'guam'], ['us', 'uav', 'MQ-4C Triton', 'guam'],
+      ['us', 'ftr5', 'CVW-5 F-35C', 'cv:CSG-5 (CVN-73)'], ['us', 'ftr', 'CVW-5 F/A-18E/F', 'cv:CSG-5 (CVN-73)'],
+      ['us', 'aew', 'CVW-5 E-2D', 'cv:CSG-5 (CVN-73)'], ['us', 'ewac', 'CVW-5 EA-18G', 'cv:CSG-5 (CVN-73)'],
+      // Japan
+      ['jp', 'ftr', 'JASDF 9 AW F-15J', 'naha'], ['jp', 'ftr5', 'JASDF 3 AW F-35A', 'misawa'],
+      // PRC
+      ['prc', 'ftr', 'J-16 Bde (Longtian)', 'longtian'], ['prc', 'ftr', 'J-10C Bde (Hui\'an)', 'huian'], ['prc', 'ftr', 'J-10C Bde (Xiamen)', 'xiamen'],
+      ['prc', 'ftr', 'J-16 Bde (Jinjiang)', 'jinjiang'], ['prc', 'aew', 'KJ-500 (Changle)', 'changle'],
+      ['prc', 'ftr5', 'J-20 Bde (East)', 'zhejiang'], ['prc', 'ftr5', 'J-20 Bde (East 2)', 'zhejiang'], ['prc', 'ewac', 'J-16D EW Regt', 'zhejiang'],
+      ['prc', 'tanker', 'Y-20U Tanker Regt', 'zhejiang'], ['prc', 'aew', 'KJ-500 (East)', 'zhejiang'],
+      ['prc', 'ftr5', 'J-20 Bde (South)', 'guangdong'], ['prc', 'ftr', 'J-16 Bde (Guangdong)', 'guangdong'], ['prc', 'uav', 'WZ-7 / TB-001 UAV Bde', 'guangdong'],
+      ['prc', 'mpa', 'Y-9Q ASW Regt', 'guangdong'], ['prc', 'uav', 'GJ-2 UAV Regt', 'zhejiang'],
+      ['prc', 'bomber', 'H-6K Bomber Div', 'inland'], ['prc', 'bomber', 'H-6N Bomber Regt', 'inland'],
+      ['prc', 'ftr', 'Shandong J-15 Air Wing', 'cv:Shandong CSG'],
+    ],
+    // Salvo = a battalion-sized volley. reach: targets on the map and base-box tiers.
+    missiles: {
+      red: {
+        srbm: { faction: 'prc', name: 'SRBM (DF-11/15/16)', stock: 40, perTurn: 6, power: 6, ballistic: true, reach: ['map'] },
+        mrbm: { faction: 'prc', name: 'MRBM (DF-17/21D)', stock: 16, perTurn: 4, power: 7, ballistic: true, antiShip: true, reach: ['map', 'close', 'medium'] },
+        irbm: { faction: 'prc', name: 'IRBM (DF-26)', stock: 8, perTurn: 2, power: 7, ballistic: true, antiShip: true, reach: ['map', 'close', 'medium', 'far'] },
+        lacm: { faction: 'prc', name: 'Cruise missiles (CJ-10/20)', stock: 14, perTurn: 4, power: 5, reach: ['map', 'close', 'medium'] },
+      },
+      blue: {
+        tlam: { faction: 'us', name: 'Tomahawk (land attack)', stock: 20, perTurn: 4, power: 5, reach: ['map'],
+          needs: (G) => G.state.units.some((u) => u.faction === 'us' && (u.type === 'ddg' || u.type === 'ssn')) },
+        mst: { faction: 'us', name: 'Maritime Strike Tomahawk', stock: 6, perTurn: 2, power: 5, antiShip: true, reach: ['map'],
+          needs: (G) => G.state.units.some((u) => u.faction === 'us' && (u.type === 'ddg' || u.type === 'ssn')) },
+        hf2e: { faction: 'roc', name: 'HF-2E cruise missiles (ROC)', stock: 6, perTurn: 2, power: 4, reach: ['map'] },
+      },
+    },
+    // Japanese and Philippine bases depend on the basing-access option (and later, escalation).
+    accessOk(G, def) {
+      if (def.requires === 'japan') return G.state.access !== 'none' || !!G.state.japanAtWar;
+      if (def.requires === 'ph') return G.state.access === 'full';
+      return true;
+    },
+    factionActive(G, faction) { return faction !== 'jp' || G.state.access !== 'none' || !!G.state.japanAtWar; },
+  };
+
+  function setupAir(G) {
+    const A = WG.Air;
+    if (!A.active()) return;
+    const carriers = {};
+    for (const u of G.state.units) if (u.type === 'cv') carriers[u.name] = 'cv:' + u.id;
+    for (const [faction, type, name, base] of AIR.squadrons) {
+      const b = base.startsWith('cv:') ? carriers[base.slice(3)] : base;
+      if (!b) continue;
+      A.addSquadron({ side: SIDE[faction], faction, type, name, base: b, country: COUNTRY[faction] });
+    }
+    A.setMissiles('red', AIR.missiles.red);
+    A.setMissiles('blue', AIR.missiles.blue);
   }
 
   function layMines(G) {
@@ -244,8 +331,9 @@
       { id: 'turns', label: 'Length (turn = 12 hours)', choices: [['16', '8 days (16 turns)'], ['20', '10 days (20 turns)'], ['28', '14 days (28 turns)']], value: '20' },
       { id: 'access', label: 'Allied basing access', choices: [['full', 'Japan and Philippines'], ['japan', 'Japan only'], ['none', 'None at start']], value: 'full' },
     ],
-    unitTypes: ['inf', 'mech', 'armor', 'marine', 'amphmech', 'airborne', 'arty', 'rocket', 'lrocket', 'asm', 'lasm', 'sam', 'ew', 'lm', 'hq',
+    unitTypes: ['inf', 'resinf', 'mech', 'armor', 'marine', 'amphmech', 'airborne', 'arty', 'rocket', 'lrocket', 'asm', 'lasm', 'sam', 'ew', 'lm', 'hq',
       'ddg', 'ffg', 'fac', 'cv', 'amph', 'roro', 'mcm', 'usv', 'ssk', 'ssn'],
+    air: AIR,
     firstSide: 'red',
     maxTurns: 20,
     supplyRange: 8,
@@ -265,11 +353,13 @@
       setupUS(G, G.state.access);
       setupJP(G);
       setupPRC(G);
+      setupAir(G);
       layMines(G);
       const pick = Math.random();
       G.state.aiPlan = {
-        areas: pick < 0.45 ? ['north', 'south'] : pick < 0.8 ? ['north', 'central'] : ['central', 'south'],
+        areas: pick < 0.4 ? ['north'] : pick < 0.75 ? ['south'] : ['central'],
         penghu: true,
+        strikeJapan: Math.random() < 0.5,
       };
     },
 
@@ -323,6 +413,21 @@
 
     income(G) { return { blue: 0, red: objectiveVP(G, 'red') }; },
 
+    // Coastal radar sites can be struck with missiles.
+    sensorSites(G) { return sensorTiles(G).filter((x) => x.range <= 6); },
+    strikeSite(G, side, missileId, site) {
+      const A = WG.Air;
+      const d = A.missileDef(side, missileId);
+      A.consume(side, missileId);
+      const D = G.adCover(site.side, site.t.q, site.t.r, !!d.ballistic);
+      const I = D > 0 ? Math.min(0.85, D / (D + d.power)) : 0;
+      const hit = d.power * (1 - I) > 2.5 * Math.random();
+      if (hit) { G.state.sitesDown = G.state.sitesDown || {}; G.state.sitesDown[site.id] = true; }
+      G.addLog(side, `${d.name} salvo at the coastal radar ${G.placeName(site.t)}: ${hit ? 'radar destroyed' : 'missed'}`);
+      if (this.onStrike) this.onStrike(G, side, site.t, null);
+      G.touch();
+    },
+
     vpHtml(G) {
       const held = objectiveVP(G, 'red');
       return `<span class="vp red" title="Objective points the PRC holds on Taiwan and its islands">PRC objectives <b>${held}</b>/${totalVP(G)}</span>`;
@@ -374,6 +479,47 @@
         return !G.state.units.some((e) => e.side !== u.side && known.has(e.id) && G.type(e).domain === 'sea' &&
           Hex.distance(e.q, e.r, u.q, u.r) <= 12);
       },
+    },
+
+    aiZoneBonus(G, side, z) {
+      const AREA = { north: 'twn', central: 'twc', south: 'tws' };
+      if (side === 'red') {
+        const areas = (G.state.aiPlan && G.state.aiPlan.areas) || [];
+        if (areas.some((a) => AREA[a] === z)) return 6;
+        return ['stn', 'stc', 'sts'].includes(z) ? 3 : 0;
+      }
+      return ['stn', 'stc', 'sts', 'twn', 'twc', 'tws'].includes(z) ? 2 : 0;
+    },
+    // PRC fires concentrate on defenders of its landing beaches; the Allies on anything that got ashore.
+    aiTargetBonus(G, side, e) {
+      const t = G.tile(e.q, e.r);
+      if (side === 'red') {
+        const areas = (G.state.aiPlan && G.state.aiPlan.areas) || [];
+        const nearBeach = areas.some((a) => (G.map.landingAreas[a] || []).some((k) => {
+          const b = G.map.tiles.get(k);
+          return Hex.distance(b.q, b.r, e.q, e.r) <= 1;
+        }));
+        return nearBeach ? 2 : 1;
+      }
+      return t.home === 'blue' && G.type(e).domain === 'land' ? 1.8 : 1;
+    },
+    // Taiwan's corps defend their own sectors and only march to landings within reach.
+    aiReactRange(G, u) { return u.faction === 'roc' ? 14 : Infinity; },
+    aiIsrZones(G, side) {
+      const AREA = { north: 'twn', central: 'twc', south: 'tws' };
+      if (side === 'red') return [...((G.state.aiPlan && G.state.aiPlan.areas) || []).map((a) => AREA[a]), 'eas'];
+      return ['stn', 'stc', 'sts'];
+    },
+    // PRC AI decides once whether to hit US bases in Japan and Guam; the Allied AI avoids striking the mainland.
+    aiMayStrikeBase(G, side, def) {
+      if (side === 'red') {
+        if (def.region === 'Japan' || def.region === 'Guam') return !!(G.state.aiPlan && G.state.aiPlan.strikeJapan) || !!G.state.japanAtWar;
+        return def.region !== 'Philippines' || G.state.access === 'full';
+      }
+      return def.kind === 'hex';
+    },
+    aiMayStrikeTile(G, side, t) {
+      return side === 'red' || t.home !== 'red' || !!t.airbase;
     },
 
     cityValue(c, side) { return side === 'red' && c.home === 'blue' ? c.city.vp : 0; },

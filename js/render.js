@@ -202,6 +202,40 @@
       }
     },
 
+    // Air picture overlay: tinted cells, zone borders and labels.
+    drawAirPicture(cells, borders, labels) {
+      const L = this.layers.zones;
+      L.replaceChildren();
+      for (const c of cells) {
+        const t = this.map.tiles.get(c.key);
+        el('polygon', { points: Hex.points(S + 0.4, t.x, t.y), class: 'zonecell ' + c.cls }, L);
+      }
+      if (borders) el('path', { d: borders, class: 'zone-border' }, L);
+      for (const lb of labels || []) {
+        const g = el('g', { transform: `translate(${lb.x},${lb.y})`, class: 'zone-label' }, L);
+        const t1 = el('text', { y: 0, class: 'zl-name' }, g);
+        t1.textContent = lb.name;
+        if (lb.sub) { const t2 = el('text', { y: 16, class: 'zl-sub ' + (lb.cls || '') }, g); t2.textContent = lb.sub; }
+      }
+    },
+
+    zoneBorders(map) {
+      if (map._borders) return map._borders;
+      let d = '';
+      for (const t of map.list) {
+        Hex.DIRS.forEach((dir, i) => {
+          if (i > 2) return;
+          const n = map.tiles.get(Hex.key(t.q + dir[0], t.r + dir[1]));
+          if (n && n.zone !== t.zone) {
+            const [a, b] = EDGE(i).map((c) => corner(t, c));
+            d += `M${a[0].toFixed(1)} ${a[1].toFixed(1)}L${b[0].toFixed(1)} ${b[1].toFixed(1)}`;
+          }
+        });
+      }
+      map._borders = d;
+      return d;
+    },
+
     updateFog(visible) {
       for (const [k, p] of this.fogEls) {
         const v = !visible || visible.has(k) ? 'hidden' : 'visible';

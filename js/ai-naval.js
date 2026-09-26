@@ -61,10 +61,12 @@
       return Hex.neighbors(t.q, t.r).map((n) => g.tile(n.q, n.r)).filter((x) => x && g.isSea(x)).map((x) => x.key);
     },
 
-    targetValue(e) {
+    targetValue(e, side) {
       const et = UNIT_TYPES[e.type];
       let v = et.value;
       if (e.cargo && e.cargo.length) v *= 2.2;
+      const sc = G().scenario;
+      if (sc.aiTargetBonus) v *= sc.aiTargetBonus(G(), side, e);
       return v;
     },
 
@@ -87,8 +89,9 @@
         const exp = ut.domain === 'sub' ? 0 : this.exposure(p, enemies);
         for (const e of tg) {
           const o = g.odds(u, e, p);
-          let s = o.expDef * this.targetValue(e) * (UNIT_TYPES[e.type].domain === 'land' ? 0.7 : 1);
-          if (o.expDef >= e.steps) s += this.targetValue(e);
+          const tv = this.targetValue(e, side);
+          let s = o.expDef * tv * (UNIT_TYPES[e.type].domain === 'land' ? 0.7 : 1);
+          if (o.expDef >= e.steps) s += tv;
           if (ut.expendable) s -= ut.value * 0.5;
           s -= exp * 0.03 * ut.value;
           if (k === here) s += 0.15;
@@ -105,26 +108,43 @@
     },
 
     // Move to the reachable hex with the best score.
+    // Re-plans after a contact halt, up to a few times, while movement points remain.
     async moveBy(u, side, ctx, score) {
       const g = G();
-      if (!g.alive(u) || u.mpLeft <= 0) return;
-      const known = g.intel(side);
-      const here = Hex.key(u.q, u.r);
-      let bestK = here, bestS = score(here) + 0.2;
-      for (const k of g.destinations(u, g.reachable(u, known), known)) {
-        const s = score(k);
-        if (s > bestS) { bestS = s; bestK = k; }
+      for (let tries = 0; tries < 3; tries++) {
+        if (!ctx.alive() || !g.alive(u) || u.mpLeft <= 0) return;
+        const known = g.intel(side);
+        const here = Hex.key(u.q, u.r);
+        let bestK = here, bestS = score(here) + 0.2;
+        for (const k of g.destinations(u, g.reachable(u, known), known)) {
+          const s = score(k);
+          if (s > bestS) { bestS = s; bestK = k; }
+        }
+        if (bestK === here) return;
+        const res = await ctx.move(u, bestK);
+        if (!res || !res.halted || !res.contact) return;
       }
-      if (bestK !== here) await ctx.move(u, bestK);
     },
 
     // ---------- amphibious
+    // Sea hexes from which troops can go ashore in an area: free or enemy-held beaches,
+    // plus open coast beside our own beachheads there.
     areaGoals(area, side) {
       const g = G();
       const keys = new Set();
-      for (const k of g.map.landingAreas[area] || []) {
-        for (const s of this.seaAdjacent(g.map.tiles.get(k))) keys.add(s);
+      const beaches = (g.map.landingAreas[area] || []).map((k) => g.map.tiles.get(k));
+      const spots = [];
+      for (const t of beaches) {
+        const occ = g.unitAt(t.q, t.r, null, 'land');
+        if (!occ || occ.side !== side) spots.push(t);
+        if (g.state.beachheads[t.key] === side || (occ && occ.side === side)) {
+          for (const n of Hex.neighbors(t.q, t.r)) {
+            const nt = g.tile(n.q, n.r);
+            if (nt && !g.isSea(nt) && nt.mass === t.mass && !g.unitAt(nt.q, nt.r, null, 'land') && this.seaAdjacent(nt).length) spots.push(nt);
+          }
+        }
       }
+      for (const t of (spots.length ? spots : beaches)) for (const s of this.seaAdjacent(t)) keys.add(s);
       return [...keys];
     },
 
@@ -168,6 +188,7 @@
     async tryLand(ship, side, ctx) {
       const g = G();
       let landed = false;
+      const minOdds = Math.max(0.85, 1.3 - 0.15 * (ship.aiWait || 0));
       for (const id of ship.cargo.slice()) {
         if (!ctx.alive() || !g.alive(ship)) return landed;
         const u = g.byId(id);
@@ -185,7 +206,7 @@
           s += Math.min(2, friendsAshore) * 1.5;
           if (o.assault) {
             const odds = g.combatOdds(u, o.def, { q: ship.q, r: ship.r }, { landing: true });
-            if (odds.ratio < 1.25) continue;
+            if (odds.ratio < minOdds) continue;
             s = odds.ratio * 2 - 1;
           } else {
             s -= g.enemyAdjacent(side, t.q, t.r, known, 'land') ? 1.5 : 0;
@@ -238,7 +259,7 @@
           const group = g.state.units.filter((t) => t.side === side && t.cargo && t.cargo.length && !t.aiLanded &&
             g.state.aiPlan.assign[t.id] === area);
           const near = group.filter((t) => (f.get(Hex.key(t.q, t.r)) ?? 99) <= 6).length;
-          if (near < Math.min(2, group.length) && g.state.turn < 4) hold = 5;
+          if (near < Math.ceil(group.length * 0.7) && g.state.turn < 5) hold = 5;
         }
         await this.moveBy(ship, side, ctx, (k) => {
           let d = f.get(k);
@@ -248,7 +269,17 @@
         });
         if (hold) return;
         if (ctx.alive() && g.alive(ship)) {
-          if (await this.tryLand(ship, side, ctx)) ship.aiLanded = true;
+          if (await this.tryLand(ship, side, ctx)) { ship.aiLanded = true; ship.aiWait = 0; }
+          else if ((f.get(Hex.key(ship.q, ship.r)) ?? 99) <= 1) {
+            // At the beach but could not get ashore: grow bolder, and eventually try another area.
+            ship.aiWait = (ship.aiWait || 0) + 1;
+            if (ship.aiWait >= 3 && area && g.state.aiPlan) {
+              const alt = Object.keys(g.map.landingAreas).filter((a) => a !== area && a !== 'penghu')
+                .map((a) => ({ a, free: (g.map.landingAreas[a] || []).filter((k) => !g.unitAt(g.map.tiles.get(k).q, g.map.tiles.get(k).r, null, 'land')).length }))
+                .sort((x, y) => y.free - x.free)[0];
+              if (alt && alt.free) { g.state.aiPlan.assign[ship.id] = alt.a; ship.aiWait = 0; }
+            }
+          }
         }
         return;
       }

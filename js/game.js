@@ -446,8 +446,14 @@
     },
 
     // ---------- amphibious operations
+    // Beaches, ports, home coast, and coast next to one of our beachheads (lodgments expand along the shore).
     isCoastalLanding(t, side) {
-      return t.beach || (t.city && t.city.port) || t.home === side || this.state.beachheads[t.key] === side;
+      if (t.beach || (t.city && t.city.port) || t.home === side || this.state.beachheads[t.key] === side) return true;
+      return Hex.neighbors(t.q, t.r).some((n) => {
+        const k = Hex.key(n.q, n.r);
+        const nt = this.map.tiles.get(k);
+        return this.state.beachheads[k] === side && nt && nt.mass === t.mass;
+      });
     },
 
     embarkOptions(u) {
@@ -540,8 +546,9 @@
       const eff = P * (1 - intercept);
       let hard = dt.def / 4;
       if (dt.domain === 'land') {
+        // Dispersed, camouflaged ground units are poor targets for missiles and bombs.
         const terr = this.terr(this.tile(def.q, def.r));
-        hard = Math.max(0.5, (dt.def / 5) * terr.def * (def.entrenched ? 1.3 : 1));
+        hard = Math.max(0.8, (dt.def / 5) * terr.def * (def.entrenched ? 1.3 : 1)) * 2;
       }
       const exp = (eff * lethality) / hard;
       return { D, intercept, eff, exp };

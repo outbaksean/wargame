@@ -15,6 +15,8 @@
   let mode = null; // plugin targeting mode: { hint, onHover(tile), onClick(tile), cancel() }
   const view = { x: 0, y: 0, w: 1000, h: 700 };
   const tabs = [];
+  const unitActionProviders = [];
+  let pluginActions = [];
   let activeTab = 'log';
 
   // ---------- perspective
@@ -223,6 +225,9 @@
     if (controllable(u) && humanTurn()) {
       if (ut.emitter) actions += `<button class="act" data-act="emit">${u.emitting ? (ut.emitter === 'jammer' ? 'Stop jamming' : 'Radar off (EMCON)') : ut.emitter === 'jammer' ? 'Start jamming' : 'Radar on'}</button>`;
       for (const s of embarks) actions += `<button class="act" data-act="embark" data-ship="${s.id}">Embark on ${esc(s.name)}</button>`;
+      pluginActions = [];
+      for (const prov of unitActionProviders) for (const a of prov(u) || []) pluginActions.push(a);
+      pluginActions.forEach((a, i) => { actions += `<button class="act" data-act="plugin" data-i="${i}" ${a.disabled ? 'disabled' : ''} title="${esc(a.title || '')}">${esc(a.label)}</button>`; });
     }
     let cargo = '';
     if (u.cargo && u.cargo.length && (own || !Game.state.fog)) {
@@ -345,6 +350,9 @@
         } else if (b.dataset.act === 'embark') {
           const ship = Game.byId(+b.dataset.ship);
           if (ship) doEmbark(sel, ship);
+        } else if (b.dataset.act === 'plugin') {
+          const a = pluginActions[+b.dataset.i];
+          if (a) a.run(sel);
         }
       };
     });
@@ -485,8 +493,30 @@
     select(ship);
   }
 
+  // Visual effect for off-map fire (missiles, aircraft) arriving at a tile.
+  async function fx(from, to, kind) {
+    const v = viewer();
+    if (!to) return;
+    const seen = !v || !Game.state.fog || Game.visibleTiles(v).has(to.key) || Game.state.side === v;
+    if (!seen) return;
+    const origin = from || { x: to.x + (Game.state.side === 'red' ? -520 : 520), y: to.y - 380 };
+    await Render.tracer(origin, to, 420, kind === 'missile' ? 'tracer missile' : 'tracer air');
+    Render.flash(to);
+  }
+
+  async function airAssault(u, key) {
+    const t = Game.map.tiles.get(key);
+    const from = Game.tile(u.q, u.r);
+    await fx(from, t, 'air');
+    const res = WG.Air.doAirAssault(u, key);
+    Game.save();
+    refresh();
+    if (res.loss) Render.floatText(t, `−${res.loss}`, '#ff8a80');
+    return res;
+  }
+
   // Actions used by the AI and plugins.
-  const actions = { move: moveUnit, attack, land, refresh, sleep, viewer };
+  const actions = { move: moveUnit, attack, land, refresh, sleep, viewer, fx, airAssault };
 
   // ---------- turn flow
   async function runTurn() {
@@ -977,7 +1007,8 @@
   }
 
   WG.UI = {
-    registerTab, showTab, setMode, cancelMode, refresh, setBanner, humanTurn, viewer, knownFor, isVisibleTo,
+    registerTab, showTab, registerUnitAction: (fn) => unitActionProviders.push(fn), select, deselect, controllable,
+    showModal, closeModal, setMode, cancelMode, refresh, setBanner, humanTurn, viewer, knownFor, isVisibleTo,
     actions, esc, centerOn, get busy() { return busy; }, set busy(v) { busy = v; },
   };
 
