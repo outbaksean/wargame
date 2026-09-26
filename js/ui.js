@@ -6,28 +6,33 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const cap = Game.cap;
-  const SIZES = { s: [24, 16], m: [32, 22], l: [40, 26] };
-  const STEP_MS = 130;
+  const STEP_MS = 120;
 
   let svg;
   let sel = null, selReach = null, dests = new Set(), zocKeys = new Set(), targets = new Map();
-  let hoverTile = null, busy = false, token = 0, modalOpen = false, bannerTimer = null;
+  let landings = [], embarks = [], cargoPick = 0;
+  let hoverTile = null, busy = false, token = 0, modalOpen = false, bannerTimer = null, humanPhase = false;
+  let mode = null; // plugin targeting mode: { hint, onHover(tile), onClick(tile), cancel() }
   const view = { x: 0, y: 0, w: 1000, h: 700 };
+  const tabs = [];
+  let activeTab = 'log';
 
   // ---------- perspective
   function viewer() {
-    const p = Game.state.players;
-    if (p.blue === 'human' && p.red === 'human') return Game.state.side;
-    if (p.blue === 'human') return 'blue';
-    if (p.red === 'human') return 'red';
+    const s = Game.state;
+    const hb = Game.humanFactions('blue').length, hr = Game.humanFactions('red').length;
+    if (hb && hr) return s.side;
+    if (hb) return 'blue';
+    if (hr) return 'red';
     return null;
   }
-  function knownFor(v) { return v && Game.state.fog ? Game.visibleEnemies(v) : null; }
+  function knownFor(v) { return v && Game.state.fog ? Game.intel(v) : null; }
   function isVisibleTo(u, v, known) { return !known || u.side === v || known.has(u.id); }
   function humanTurn() {
     const s = Game.state;
-    return !!s && !s.over && s.players[s.side] === 'human' && !busy && !modalOpen;
+    return !!s && !s.over && humanPhase && Game.humanFactions(s.side).length > 0 && !busy && !modalOpen;
   }
+  function controllable(u) { return u && u.side === Game.state.side && Game.isHuman(u) && !u.carrier; }
 
   // ---------- view / camera
   function applyView() { svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`); }
@@ -89,23 +94,30 @@
   }
   function initialView() {
     fitMap();
-    if (scale() < 0.7) {
-      view.w = svg.clientWidth / 0.8;
+    const sc = Game.scenario;
+    const v = viewer();
+    const focus = sc.initialFocus ? sc.initialFocus(Game, v) : null;
+    if (scale() < 0.6) {
+      view.w = svg.clientWidth / (focus && focus.scale ? focus.scale : 0.8);
       view.h = view.w * aspect();
-      const v = viewer();
-      const capital = v && Game.map.cities.find((c) => c.city.capital && c.city.owner === v);
-      const units = v ? Game.unitsOf(v) : Game.state.units;
-      const cx = capital ? (capital.x + units.reduce((s, u) => s + Hex.toPixel(u.q, u.r).x, 0) / units.length) / 2 : Render.bounds.x + Render.bounds.w / 2;
-      centerOn({ x: cx, y: Render.bounds.y + Render.bounds.h / 2 }, true);
+      if (focus) {
+        centerOn(Hex.toPixel(focus.q, focus.r), true);
+      } else {
+        const units = v ? Game.unitsOf(v) : Game.state.units;
+        const capital = v && Game.map.cities.find((c) => c.city.capital && c.city.owner === v);
+        const avg = units.reduce((s, u) => s + Hex.toPixel(u.q, u.r).x, 0) / Math.max(1, units.length);
+        const cx = capital ? (capital.x + avg) / 2 : Render.bounds.x + Render.bounds.w / 2;
+        centerOn({ x: cx, y: Render.bounds.y + Render.bounds.h / 2 }, true);
+      }
     }
   }
 
   // ---------- refresh
   function isSpent(u) {
-    const s = Game.state;
-    if (u.side !== s.side || s.players[s.side] !== 'human') return false;
+    if (!controllable(u)) return false;
     if (u.mpLeft > 0) return false;
-    return !Game.canAttack(u) || !Game.targets(u, Game.visibleEnemies(u.side)).length;
+    if (u.cargo && u.cargo.some((id) => { const c = Game.byId(id); return c && !c.moved; })) return false;
+    return !Game.canAttack(u) || !Game.targets(u, Game.intel(u.side)).length;
   }
 
   function refresh() {
@@ -118,22 +130,26 @@
     });
     Render.updateFog(v && Game.state.fog ? Game.visibleTiles(v) : null);
     Render.drawCities(Game.map);
+    Render.drawMarks(Game.state, v);
+    for (const t of tabs) if (t.onRefresh) t.onRefresh();
     updateTopbar();
     updatePanels();
     updateButtons();
-    updateLog();
+    renderTab();
   }
 
   function updateTopbar() {
     const s = Game.state;
-    const who = s.players[s.side] === 'ai' ? 'AI' : 'Human';
+    const humans = Game.humanFactions(s.side);
+    const who = humans.length ? humans.map((f) => Game.scenario.factions[f].name).join(', ') : 'AI';
     const inc = Game.income();
+    const extra = Game.scenario.statusText ? Game.scenario.statusText(Game) : '';
     $('#turninfo').innerHTML =
       `<span class="turn">Turn <b>${s.turn}</b> / ${s.maxTurns}</span>` +
-      `<span class="chip ${s.side}">${cap(s.side)} · ${who}</span>`;
+      `<span class="chip ${s.side}">${esc(Game.sideName(s.side))} · ${esc(who)}</span>${extra}`;
     $('#vpinfo').innerHTML =
-      `<span class="vp blue" title="Victory points (income per turn)">Blue <b>${s.vp.blue}</b> <small>+${inc.blue}</small></span>` +
-      `<span class="vp red" title="Victory points (income per turn)">Red <b>${s.vp.red}</b> <small>+${inc.red}</small></span>`;
+      `<span class="vp blue" title="Victory points (income per turn)">${esc(Game.sideName('blue'))} <b>${s.vp.blue}</b> <small>+${inc.blue}</small></span>` +
+      `<span class="vp red" title="Victory points (income per turn)">${esc(Game.sideName('red'))} <b>${s.vp.red}</b> <small>+${inc.red}</small></span>`;
   }
 
   function updateButtons() {
@@ -143,115 +159,238 @@
     $('#btn-undo').disabled = !h || !Game.undo;
   }
 
+  // ---------- sidebar tabs
+  function registerTab(t) { tabs.push(t); }
+  function renderTabBar() {
+    const all = [...tabs, { id: 'log', label: 'Log' }];
+    $('#tabbar').innerHTML = all.filter((t) => !t.visible || t.visible())
+      .map((t) => `<button data-tab="${t.id}" class="${t.id === activeTab ? 'on' : ''}">${esc(t.label)}</button>`).join('');
+    $('#tabbar').querySelectorAll('button').forEach((b) => { b.onclick = () => { activeTab = b.dataset.tab; renderTabBar(); renderTab(); }; });
+  }
+  function renderTab() {
+    const t = tabs.find((x) => x.id === activeTab);
+    $('#log').style.display = t ? 'none' : '';
+    $('#tabbody').style.display = t ? '' : 'none';
+    if (t) t.render($('#tabbody'));
+    else updateLog();
+  }
+  function showTab(id) { activeTab = id; renderTabBar(); renderTab(); }
+
   function updateLog() {
     const log = Game.state.log;
     const ol = $('#log');
     if (ol._len === log.length && ol._last === log[log.length - 1]) return;
     ol._len = log.length;
     ol._last = log[log.length - 1];
-    ol.innerHTML = log.slice(-80).reverse()
+    ol.innerHTML = log.slice(-100).reverse()
       .map((e) => `<li class="${e.side || 'sys'}"><span class="lt">T${e.t}</span>${esc(e.text)}</li>`).join('');
   }
 
   // ---------- side panels
   function symbolSvg(u, cls = 'usym') {
-    return `<svg class="${cls}" viewBox="-26 -30 52 50">${Symbols.build(u.type, u.side)}</svg>`;
+    return `<svg class="${cls}" viewBox="-26 -30 52 50">${Symbols.build(u.type, u.side, { echelon: u.echelon, country: u.country })}</svg>`;
   }
 
   function unitCard(u) {
     const ut = UNIT_TYPES[u.type];
-    const own = u.side === Game.state.side || u.side === viewer();
+    const own = u.side === viewer() || !Game.state.fog;
     const pips = Array.from({ length: ut.steps }, (_, i) => `<i class="${i < u.steps ? 'on' : ''}"></i>`).join('');
     const tags = [];
-    if (u.entrenched) tags.push('<span class="tag dug">Dug in</span>');
-    if (Game.hqNear(u.side, u.q, u.r, u)) tags.push('<span class="tag cmd">In command</span>');
+    if (u.entrenched && ut.domain === 'land') tags.push('<span class="tag dug">Dug in</span>');
+    if (ut.domain === 'land' && !u.supplied) tags.push(`<span class="tag bad">Out of supply${u.oos ? ` (${u.oos})` : ''}</span>`);
+    if (Game.hqNear(u.side, u.q, u.r, u) && ut.domain === 'land') tags.push('<span class="tag cmd">In command</span>');
+    if (ut.emitter) tags.push(u.emitting ? `<span class="tag emit">${ut.emitter === 'jammer' ? 'Jamming' : 'Radar on'}</span>` : '<span class="tag">Emissions off</span>');
     if (own && u.side === Game.state.side) {
-      if (u.attacked) tags.push(`<span class="tag">${ut.indirect ? 'Fired' : 'Attacked'}</span>`);
-      else if (ut.indirect && u.moved) tags.push('<span class="tag">Moved, cannot fire</span>');
+      if (u.attacked) tags.push('<span class="tag">Engaged</span>');
+      else if (ut.domain === 'land' && (ut.indirect || ut.sea) && u.moved) tags.push('<span class="tag">Moved, cannot fire</span>');
     }
     const t = Game.tile(u.q, u.r);
+    const fac = Game.faction(u);
+    const stat = (label, val) => `<div><span>${label}</span><b>${val}</b></div>`;
+    const stats = [];
+    if (ut.atk) stats.push(stat('Attack', `${ut.atk}${ut.range > 1 ? ` <small>r${ut.range}</small>` : ''}`));
+    if (ut.sea) stats.push(stat('Anti-ship', `${ut.sea.atk} <small>r${ut.sea.range}</small>`));
+    if (ut.asw) stats.push(stat('ASW', `${ut.asw.atk} <small>r${ut.asw.range}</small>`));
+    if (ut.ad) stats.push(stat('Air def.', `${ut.ad.ad}${ut.ad.bmd ? `/${ut.ad.bmd}` : ''} <small>r${ut.ad.range}</small>`));
+    if (ut.jam) stats.push(stat('Jam radius', ut.jam));
+    stats.push(stat('Defense', ut.def));
+    stats.push(stat('Move', `${own ? `${+u.mpLeft.toFixed(1)}/` : ''}${ut.mp}`));
+    stats.push(stat('Vision', ut.vision));
+    if (ut.capacity) stats.push(stat('Carries', `${u.cargo.length}/${ut.capacity}`));
+    let actions = '';
+    if (controllable(u) && humanTurn()) {
+      if (ut.emitter) actions += `<button class="act" data-act="emit">${u.emitting ? (ut.emitter === 'jammer' ? 'Stop jamming' : 'Radar off (EMCON)') : ut.emitter === 'jammer' ? 'Start jamming' : 'Radar on'}</button>`;
+      for (const s of embarks) actions += `<button class="act" data-act="embark" data-ship="${s.id}">Embark on ${esc(s.name)}</button>`;
+    }
+    let cargo = '';
+    if (u.cargo && u.cargo.length && (own || !Game.state.fog)) {
+      cargo = '<div class="cargo-list"><span class="muted small">Aboard:</span>' + u.cargo.map((id, i) => {
+        const c = Game.byId(id);
+        if (!c) return '';
+        const pick = controllable(u) && humanTurn() && !c.moved;
+        return `<button class="cargo-item ${i === cargoPick ? 'on' : ''}" data-cargo="${i}" ${pick ? '' : 'disabled'}>${symbolSvg(c, 'usym xs')}${esc(c.name)}${c.moved ? ' <small>(landed)</small>' : ''}</button>`;
+      }).join('') + (controllable(u) && humanTurn() ? '<div class="hint">Green hexes: land here. Red: assault landing.</div>' : '') + '</div>';
+    }
     return `
       <div class="ucard ${u.side}">
         ${symbolSvg(u)}
         <div class="uinfo">
           <div class="uname">${esc(u.name)}</div>
-          <div class="utype">${ut.name} · ${cap(u.side)}</div>
+          <div class="utype">${ut.name} · ${esc(fac.name)}</div>
           <div class="pips" title="Strength ${u.steps}/${ut.steps}">${pips}</div>
         </div>
       </div>
-      <div class="stats">
-        <div><span>Attack</span><b>${ut.atk}</b></div>
-        <div><span>Defense</span><b>${ut.def}</b></div>
-        <div><span>Move</span><b>${own ? `${+u.mpLeft.toFixed(1)}/` : ''}${ut.mp}</b></div>
-        <div><span>Range</span><b>${ut.range}</b></div>
-        <div><span>Vision</span><b>${ut.vision}</b></div>
-        <div><span>Mobility</span><b>${ut.move}</b></div>
-      </div>
-      <div class="tags">${tags.join('')}<span class="tag">${esc(Game.terr(t).name)}</span></div>`;
+      <div class="stats">${stats.join('')}</div>
+      <div class="tags">${tags.join('')}<span class="tag">${esc(Game.terr(t).name)}</span></div>
+      ${cargo}
+      ${actions ? `<div class="unit-actions">${actions}</div>` : ''}`;
   }
 
   function fmtRatio(r) { return r >= 1 ? `${r.toFixed(1)} : 1` : `1 : ${(1 / r).toFixed(1)}`; }
 
   function combatPreview(att, def) {
-    const o = Game.combatOdds(att, def);
+    const o = Game.odds(att, def);
+    const land = o.mode === 'land';
+    const cls = land ? (o.ratio >= 2 ? 'good' : o.ratio >= 1.2 ? 'fair' : 'bad') : (o.expDef >= 1.2 ? 'good' : o.expDef >= 0.6 ? 'fair' : 'bad');
+    const head = land ? fmtRatio(o.ratio) : `~${o.expDef.toFixed(1)}`;
+    const title = land ? `${o.ranged ? 'Bombard' : 'Assault'} ${esc(def.name)}`
+      : `${{ missile: 'Missile strike', torpedo: 'Torpedo attack', drone: 'Drone strike', kamikaze: 'Drone boat attack', asw: 'ASW attack' }[o.kind]} on ${esc(def.name)}`;
+    return `
+      <div class="combat">
+        <div class="combat-head"><span class="odds ${cls}">${head}</span><span>${title}</span></div>
+        <div class="exp">Expected losses: enemy <b>${o.expDef.toFixed(1)}</b>${land ? ` · yours <b>${o.expAtt.toFixed(1)}</b>` : ''}
+          ${o.ranged && land ? '<br><small>Indirect fire: no return fire, no retreat.</small>' : ''}</div>
+        <ul class="mods">${o.mods.map((m) => `<li class="${m.good ? 'pos' : 'neg'}">${esc(m.text)}</li>`).join('') || '<li>No modifiers</li>'}</ul>
+        <div class="hint">Click to attack</div>
+      </div>`;
+  }
+
+  function landingPreview(u, ship, def) {
+    const o = Game.combatOdds(u, def, { q: ship.q, r: ship.r }, { landing: true });
     const cls = o.ratio >= 2 ? 'good' : o.ratio >= 1.2 ? 'fair' : 'bad';
     return `
       <div class="combat">
-        <div class="combat-head"><span class="odds ${cls}">${fmtRatio(o.ratio)}</span>
-          <span>${o.ranged ? 'Bombard' : 'Assault'} ${esc(def.name)}</span></div>
-        <div class="exp">Expected losses: enemy <b>${o.expDef.toFixed(1)}</b> · yours <b>${o.expAtt.toFixed(1)}</b>
-          ${o.ranged ? '<br><small>Indirect fire: no return fire, no retreat.</small>' : ''}</div>
-        <ul class="mods">${o.mods.map((m) => `<li class="${m.good ? 'pos' : 'neg'}">${esc(m.text)}</li>`).join('') || '<li>No modifiers</li>'}</ul>
-        <div class="hint">Click to attack</div>
+        <div class="combat-head"><span class="odds ${cls}">${fmtRatio(o.ratio)}</span><span>Assault landing vs ${esc(def.name)}</span></div>
+        <div class="exp">Expected losses: enemy <b>${o.expDef.toFixed(1)}</b> · yours <b>${o.expAtt.toFixed(1)}</b><br><small>If the defenders don't break, your troops stay aboard.</small></div>
+        <ul class="mods">${o.mods.map((m) => `<li class="${m.good ? 'pos' : 'neg'}">${esc(m.text)}</li>`).join('')}</ul>
+        <div class="hint">Click to storm the beach</div>
       </div>`;
   }
 
   function hexInfo(t) {
     const terr = Game.terr(t);
     const c = (n) => (isFinite(n) ? n : '—');
-    let html = `<div class="hexhead"><b>${esc(terr.name)}</b>${t.road ? ' <span class="tag">Road</span>' : ''}
-      <span class="muted">Defense ×${terr.def}</span></div>
-      <div class="muted small">Move cost: foot ${c(terr.cost.foot)} · tracked ${c(terr.cost.tracked)} · wheeled ${c(terr.cost.wheeled)}${t.road ? ' · road 0.5' : ''}</div>`;
+    let html = `<div class="hexhead"><b>${esc(terr.name)}</b>${t.road ? ' <span class="tag">Road</span>' : ''}${t.beach ? ' <span class="tag">Landing beach</span>' : ''}
+      ${terr.sea ? '' : `<span class="muted">Defense ×${terr.def}</span>`}</div>`;
+    if (!terr.sea) html += `<div class="muted small">Move cost: foot ${c(terr.cost.foot)} · tracked ${c(terr.cost.tracked)} · wheeled ${c(terr.cost.wheeled)}${t.road ? ' · road 0.5' : ''}</div>`;
+    if (t.region) html += `<div class="muted small">${esc(t.region)}${t.zone && Game.map.zones ? ` · ${esc(Game.map.zones[t.zone].name)}` : ''}</div>`;
     if (t.city) {
-      html += `<div class="city-info"><b>${esc(t.city.name)}</b>${t.city.capital ? ' ★ capital' : ''} ·
-        <span class="${t.city.owner || ''}">${t.city.owner ? cap(t.city.owner) : 'Neutral'}</span> · ${t.city.vp} VP/turn</div>`;
+      html += `<div class="city-info"><b>${esc(t.city.name)}</b>${t.city.capital ? ' ★ capital' : ''}${t.city.port ? ' ⚓ port' : ''} ·
+        <span class="${t.city.owner || ''}">${t.city.owner ? esc(Game.sideName(t.city.owner)) : 'Neutral'}</span>${t.city.vp ? ` · ${t.city.vp} VP/turn` : ''}</div>`;
     }
+    if (t.airbase && Game.map.bases) {
+      const b = Game.map.bases[t.airbase];
+      if (b) html += `<div class="city-info">✈ ${esc(b.name)}</div>`;
+    }
+    for (const tab of tabs) if (tab.hexInfo) html += tab.hexInfo(t) || '';
     return html;
   }
 
   function updatePanels() {
     const v = viewer();
     const known = knownFor(v);
-    const hu = hoverTile && Game.unitAt(hoverTile.q, hoverTile.r);
-    const hoverUnit = hu && isVisibleTo(hu, v, known) ? hu : null;
+    let hoverUnit = null;
+    if (hoverTile) {
+      const hl = Game.unitAt(hoverTile.q, hoverTile.r, null, 'land');
+      const hs = Game.unitAt(hoverTile.q, hoverTile.r, null, 'sea');
+      const pickVisible = (u) => (u && isVisibleTo(u, v, known) ? u : null);
+      hoverUnit = (sel && targets.has(hs && hs.id) && pickVisible(hs)) || pickVisible(hl) || pickVisible(hs);
+    }
     const shown = sel || hoverUnit;
     $('#unitpanel').innerHTML = shown ? unitCard(shown)
-      : `<div class="empty">${humanTurn() ? 'Select one of your units.' : Game.state.over ? 'Game over.' : 'Waiting…'}</div>`;
+      : `<div class="empty">${mode ? esc(mode.hint || '') : humanTurn() ? 'Select one of your units.' : Game.state.over ? 'Game over.' : 'Waiting…'}</div>`;
+    bindUnitActions();
     let hex = '';
     if (hoverTile) {
-      if (sel && hoverUnit && targets.has(hoverUnit.id)) hex += combatPreview(sel, hoverUnit);
-      else if (hoverUnit && hoverUnit !== sel) hex += `<div class="mini">${symbolSvg(hoverUnit, 'usym sm')}<span>${esc(hoverUnit.name)} <small>${UNIT_TYPES[hoverUnit.type].name}</small></span></div>`;
+      if (mode && mode.preview) hex += mode.preview(hoverTile) || '';
+      const landing = landings.find((l) => l.key === hoverTile.key);
+      if (sel && landing && landing.assault && sel.cargo) {
+        const u = Game.byId(sel.cargo[cargoPick]);
+        if (u) hex += landingPreview(u, sel, landing.def);
+      } else if (sel) {
+        const tgt = [...targets.values()].find((e) => e.q === hoverTile.q && e.r === hoverTile.r);
+        if (tgt) hex += combatPreview(sel, tgt);
+      }
+      if (hoverUnit && hoverUnit !== sel && !(sel && targets.has(hoverUnit.id))) {
+        const ut = UNIT_TYPES[hoverUnit.type];
+        hex += `<div class="mini">${symbolSvg(hoverUnit, 'usym sm')}<span>${esc(hoverUnit.name)} <small>${ut.name}</small></span></div>`;
+      }
       hex += hexInfo(hoverTile);
     }
     $('#hexpanel').innerHTML = hex || '<div class="empty small">Hover a hex for details.</div>';
   }
 
+  function bindUnitActions() {
+    document.querySelectorAll('#unitpanel [data-act]').forEach((b) => {
+      b.onclick = () => {
+        if (!sel || !humanTurn()) return;
+        if (b.dataset.act === 'emit') {
+          sel.emitting = !sel.emitting;
+          Game.addLog(sel.side, `${sel.name} ${sel.emitting ? 'switches emitters on' : 'goes silent (EMCON)'}`);
+          Game.touch();
+          Game.save();
+          select(sel);
+        } else if (b.dataset.act === 'embark') {
+          const ship = Game.byId(+b.dataset.ship);
+          if (ship) doEmbark(sel, ship);
+        }
+      };
+    });
+    document.querySelectorAll('#unitpanel [data-cargo]').forEach((b) => {
+      b.onclick = () => { cargoPick = +b.dataset.cargo; computeSel(); drawSel(); updatePanels(); };
+    });
+  }
+
   // ---------- selection
   function computeSel() {
-    dests = new Set(); zocKeys = new Set(); targets = new Map(); selReach = null;
-    if (!sel || !Game.alive(sel)) { sel = null; return; }
-    const known = Game.visibleEnemies(sel.side);
+    dests = new Set(); zocKeys = new Set(); targets = new Map(); selReach = null; landings = []; embarks = [];
+    if (!sel || !Game.alive(sel) || sel.carrier) { sel = null; return; }
+    const known = Game.intel(sel.side);
+    if (!controllable(sel)) return;
     selReach = Game.reachable(sel, known);
     for (const k of Game.destinations(sel, selReach, known)) {
       dests.add(k);
       if (selReach.get(k).zoc) zocKeys.add(k);
     }
     if (Game.canAttack(sel)) for (const e of Game.targets(sel, known)) targets.set(e.id, e);
+    embarks = Game.embarkOptions(sel);
+    if (sel.cargo && sel.cargo.length) {
+      if (cargoPick >= sel.cargo.length) cargoPick = 0;
+      let u = Game.byId(sel.cargo[cargoPick]);
+      if (u && u.moved) {
+        const i = sel.cargo.findIndex((id) => { const c = Game.byId(id); return c && !c.moved; });
+        if (i >= 0) { cargoPick = i; u = Game.byId(sel.cargo[i]); }
+      }
+      if (u) landings = Game.landingOptions(sel, u, known);
+    }
+  }
+  function drawSel() {
+    const circles = [];
+    if (sel) {
+      const ut = UNIT_TYPES[sel.type];
+      const k = Hex.key(sel.q, sel.r);
+      if (ut.ad && (sel.emitting || !ut.emitter)) circles.push({ key: k, r: ut.ad.range, cls: 'ad' });
+      if (ut.jam && sel.emitting) circles.push({ key: k, r: ut.jam, cls: 'jam' });
+      if (ut.sea && ut.sea.range > 1 && controllable(sel)) circles.push({ key: k, r: ut.sea.range, cls: 'wpn' });
+      else if (ut.range > 1 && controllable(sel)) circles.push({ key: k, r: ut.range, cls: 'wpn' });
+    }
+    Render.drawOverlay({ sel, dests, zoc: zocKeys, targets: [...targets.values()], landings, embarks, circles });
   }
   function select(u) {
+    if (u !== sel) cargoPick = 0;
     sel = u;
     computeSel();
-    Render.drawOverlay({ sel, dests, zoc: zocKeys, targets: [...targets.values()] });
+    drawSel();
     Render.drawPath(null);
     refresh();
   }
@@ -267,17 +406,24 @@
     const v = viewer();
     const res = await Game.executeMove(u, key, async (mu, from, to) => {
       const known = knownFor(v);
-      const vis = isVisibleTo(mu, v, known) || (known && Game.visibleTiles(v).has(from.key));
+      const vis = isVisibleTo(mu, v, known) || (known && Game.visibleTiles(v).has(from.key) && Game.type(mu).domain !== 'sub');
       if (vis) {
         Render.showUnit(mu);
         await Render.animateMove(mu, from, to, STEP_MS);
       }
       refresh();
     });
-    if (res && res.contact && res.halted && u.side === v) setBanner('Contact! Enemy spotted. Movement halted.', 2200);
+    if (res && res.contact && res.halted && u.side === v) setBanner('Contact! Movement halted.', 2200);
     Game.save();
     refresh();
     return res;
+  }
+
+  function showCombatFx(att, def, res, aT, dT) {
+    Render.flash(dT);
+    const lost = UNIT_TYPES[def.type].domain === 'land' ? 'Destroyed' : 'Sunk';
+    Render.floatText(dT, res.defKilled ? lost : res.defLoss ? `−${res.defLoss}` : 'No effect', '#ffdf5c');
+    if (res.attLoss) Render.floatText(aT, res.attKilled ? 'Destroyed' : `−${res.attLoss}`, '#ff8a80');
   }
 
   async function attack(att, def) {
@@ -285,17 +431,15 @@
     const known = knownFor(v);
     const show = isVisibleTo(att, v, known) || isVisibleTo(def, v, known);
     const aT = Game.tile(att.q, att.r), dT = Game.tile(def.q, def.r);
-    const ranged = UNIT_TYPES[att.type].indirect && Hex.distance(att.q, att.r, def.q, def.r) > 1;
+    const mode = Game.attackMode(att, def);
+    const ranged = mode !== 'land' || Game.combatOdds(att, def).ranged;
     if (show) {
       Render.showUnit(att);
-      if (ranged) await Render.tracer(aT, dT); else await Render.lunge(att, aT, dT);
+      if (ranged) await Render.tracer(aT, dT, 380, mode === 'land' ? 'tracer' : 'tracer missile');
+      else await Render.lunge(att, aT, dT);
     }
-    const res = Game.resolveCombat(att, def);
-    if (show || def.side === v) {
-      Render.flash(dT);
-      Render.floatText(dT, res.defKilled ? 'Destroyed' : res.defLoss ? `−${res.defLoss}` : 'No effect', '#ffdf5c');
-      if (res.attLoss) Render.floatText(aT, res.attKilled ? 'Destroyed' : `−${res.attLoss}`, '#ff8a80');
-    }
+    const res = Game.resolveAttack(att, def);
+    if (show || def.side === v) await showCombatFx(att, def, res, aT, dT);
     if (res.retreat) await Render.animateMove(def, res.retreat.from, res.retreat.to, 220);
     if (res.advance) { await sleep(120); await Render.animateMove(att, res.advance.from, res.advance.to, 220); }
     Game.save();
@@ -304,35 +448,79 @@
     return res;
   }
 
+  async function land(u, ship, key) {
+    const t = Game.map.tiles.get(key);
+    const def = Game.unitAt(t.q, t.r, null, 'land');
+    const v = viewer();
+    const show = !knownFor(v) || u.side === v || knownFor(v).has(ship.id);
+    if (def && def.side !== u.side) {
+      const from = Game.tile(ship.q, ship.r);
+      Game.reveal(def, u.side);
+      if (show) await Render.tracer(from, t, 300);
+      const res = Game.resolveLanding(u, ship, def);
+      if (show || def.side === v) await showCombatFx(u, def, res, from, t);
+      if (res.retreat) await Render.animateMove(def, res.retreat.from, res.retreat.to, 220);
+      Game.save();
+      refresh();
+      await sleep(show ? 380 : 0);
+      return res;
+    }
+    Game.disembark(u, ship, t);
+    Game.save();
+    refresh();
+    if (show) {
+      Render.showUnit(u);
+      await Render.animateMove(u, Game.tile(ship.q, ship.r), t, 260);
+    }
+    refresh();
+    return { landed: true };
+  }
+
+  function doEmbark(u, ship) {
+    if (!humanTurn()) return;
+    Game.doEmbark(u, ship);
+    Game.save();
+    select(ship);
+  }
+
+  // Actions used by the AI and plugins.
+  const actions = { move: moveUnit, attack, land, refresh, sleep, viewer };
+
   // ---------- turn flow
   async function runTurn() {
     const my = token;
     const s = Game.state;
+    humanPhase = false;
     deselect();
     refresh();
     if (s.over) { showGameOver(); return; }
-    if (s.players[s.side] === 'ai') {
+    const side = s.side;
+    const aiFactions = Game.factionsOf(side).filter((f) => Game.controller(f) === 'ai');
+    const humans = Game.humanFactions(side);
+    if (aiFactions.length) {
       busy = true;
-      setBanner(`${cap(s.side)} (AI) is moving…`);
+      const names = aiFactions.map((f) => Game.scenario.factions[f].name).join(' & ');
+      setBanner(`${names} (AI) ${aiFactions.length > 1 ? 'are' : 'is'} moving…`);
       refresh();
       await sleep(350);
-      await AI.takeTurn(s.side, { alive: () => my === token && !Game.state.over, move: moveUnit, attack });
+      await AI.takeTurn(side, aiFactions, { alive: () => my === token && !Game.state.over, ...actions });
       if (my !== token) return;
       busy = false;
       setBanner('');
       if (Game.state.over) { refresh(); showGameOver(); return; }
-      endTurn();
-    } else {
-      const hotseat = s.players.blue === 'human' && s.players.red === 'human';
-      if (hotseat && s.fog) await handoff(s.side);
-      if (my !== token) return;
-      refresh();
-      setBanner(`${cap(s.side)} to move — turn ${s.turn}`, 1800);
     }
+    if (!humans.length) { endTurn(); return; }
+    const hotseat = Game.humanFactions('blue').length && Game.humanFactions('red').length;
+    if (hotseat && s.fog) await handoff(side);
+    if (my !== token) return;
+    humanPhase = true;
+    refresh();
+    setBanner(`${Game.sideName(side)} to move — turn ${s.turn}`, 1800);
   }
 
   function endTurn() {
     if (Game.state.over) return;
+    cancelMode();
     deselect();
     Game.endTurn();
     Game.save();
@@ -348,32 +536,85 @@
     if (text && ms) bannerTimer = setTimeout(() => b.classList.remove('show'), ms);
   }
 
+  // ---------- plugin targeting modes
+  function setMode(m) {
+    cancelMode();
+    mode = m;
+    deselect();
+    svg.classList.toggle('targeting', !!m);
+    if (m && m.hint) setBanner(m.hint);
+    refresh();
+  }
+  function cancelMode() {
+    if (!mode) return;
+    const m = mode;
+    mode = null;
+    svg.classList.remove('targeting');
+    Render.drawZones([]);
+    setBanner('');
+    if (m.cancel) m.cancel();
+  }
+
   // ---------- input handlers
   async function onClick(t) {
-    if (!humanTurn() || !t) return;
-    const side = Game.state.side;
-    const u = Game.unitAt(t.q, t.r);
-    if (sel && u && targets.has(u.id)) {
+    if (!t) return;
+    if (mode) {
+      if (!humanTurn()) return;
       busy = true;
-      const att = sel;
-      await attack(att, u);
+      const m = mode;
+      const done = await m.onClick(t);
       busy = false;
-      if (Game.state.over) { showGameOver(); return; }
-      if (Game.alive(att)) select(att); else deselect();
+      if (done !== false && mode === m) cancelMode();
       refresh();
       return;
     }
-    if (sel && dests.has(t.key)) {
-      busy = true;
-      const mover = sel;
-      Render.drawOverlay({ sel: null });
-      Render.drawPath(null);
-      await moveUnit(mover, t.key);
-      busy = false;
-      if (Game.alive(mover)) select(mover); else deselect();
+    if (!humanTurn()) return;
+    const landU = Game.unitAt(t.q, t.r, null, 'land');
+    const seaU = Game.unitAt(t.q, t.r, null, 'sea');
+    // Attack
+    if (sel) {
+      const tgt = [...targets.values()].find((e) => e.q === t.q && e.r === t.r);
+      if (tgt) {
+        busy = true;
+        const att = sel;
+        await attack(att, tgt);
+        busy = false;
+        if (Game.state.over) { showGameOver(); return; }
+        if (Game.alive(att)) select(att); else deselect();
+        refresh();
+        return;
+      }
+      const landing = landings.find((l) => l.key === t.key);
+      if (landing && sel.cargo) {
+        busy = true;
+        const ship = sel;
+        const u = Game.byId(ship.cargo[cargoPick]);
+        await land(u, ship, t.key);
+        busy = false;
+        if (Game.state.over) { showGameOver(); return; }
+        if (Game.alive(ship)) select(ship); else deselect();
+        return;
+      }
+      if (dests.has(t.key)) {
+        busy = true;
+        const mover = sel;
+        Render.drawOverlay({ sel: null });
+        Render.drawPath(null);
+        await moveUnit(mover, t.key);
+        busy = false;
+        if (Game.alive(mover)) select(mover); else deselect();
+        return;
+      }
+      const ship = embarks.find((s) => s.q === t.q && s.r === t.r);
+      if (ship) { doEmbark(sel, ship); return; }
+    }
+    // Selection, cycling through stacked own units.
+    const mine = [landU, seaU].filter(controllable);
+    if (mine.length) {
+      const i = mine.indexOf(sel);
+      select(i === -1 ? mine[0] : mine[i + 1] || null);
       return;
     }
-    if (u && u.side === side) { select(u === sel ? null : u); return; }
     deselect();
     refresh();
   }
@@ -382,6 +623,7 @@
     if (t === hoverTile || !Game.state) return;
     hoverTile = t;
     Render.setHover(t);
+    if (mode && mode.onHover) mode.onHover(t);
     if (sel && t && dests.has(t.key) && humanTurn()) {
       const keys = [Hex.key(sel.q, sel.r), ...Game.pathTo(selReach, t.key)];
       Render.drawPath(keys.map((k) => Game.map.tiles.get(k)), selReach.get(t.key).cost);
@@ -394,8 +636,10 @@
   function nextUnit() {
     if (!humanTurn()) return;
     const side = Game.state.side;
-    const known = Game.visibleEnemies(side);
-    const ready = Game.unitsOf(side).filter((u) => u.mpLeft > 0 || (Game.canAttack(u) && Game.targets(u, known).length));
+    const known = Game.intel(side);
+    const ready = Game.unitsOf(side).filter((u) => controllable(u) &&
+      (u.mpLeft > 0 || (Game.canAttack(u) && Game.targets(u, known).length) ||
+        (u.cargo && u.cargo.some((id) => { const c = Game.byId(id); return c && !c.moved; }))));
     if (!ready.length) { setBanner('All units have acted. End your turn.', 1800); return; }
     const u = (sel && ready.find((x) => x.id > sel.id)) || ready[0];
     select(u);
@@ -466,6 +710,7 @@
     }, { passive: false });
     svg.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      if (mode) { cancelMode(); refresh(); return; }
       if (humanTurn()) { deselect(); refresh(); }
     });
 
@@ -484,7 +729,7 @@
         return;
       }
       const k = e.key.toLowerCase();
-      if (k === 'escape') { deselect(); refresh(); }
+      if (k === 'escape') { if (mode) cancelMode(); deselect(); refresh(); }
       else if (k === 'e') endTurnClicked();
       else if (k === 'n' || k === ' ') { e.preventDefault(); nextUnit(); }
       else if (k === 'u' || (k === 'z' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); undo(); }
@@ -507,18 +752,20 @@
   function endTurnClicked() {
     if (!humanTurn()) return;
     const side = Game.state.side;
-    const known = Game.visibleEnemies(side);
-    const idle = Game.unitsOf(side).filter((u) => !u.moved && !u.attacked).length;
-    const canHit = Game.unitsOf(side).some((u) => Game.canAttack(u) && Game.targets(u, known).length);
-    if (canHit && !$('#btn-end').dataset.confirm) {
-      $('#btn-end').dataset.confirm = '1';
-      $('#btn-end').textContent = 'Confirm end turn';
-      setBanner(`Some units can still attack${idle ? ` (${idle} haven't moved; they will dig in)` : ''}. Click again to end the turn.`, 2500);
-      setTimeout(() => { delete $('#btn-end').dataset.confirm; $('#btn-end').textContent = 'End turn'; }, 2500);
+    const known = Game.intel(side);
+    const mine = Game.unitsOf(side).filter(controllable);
+    const idle = mine.filter((u) => !u.moved && !u.attacked && UNIT_TYPES[u.type].domain === 'land').length;
+    const canHit = mine.some((u) => Game.canAttack(u) && Game.targets(u, known).length);
+    const btn = $('#btn-end');
+    if (canHit && !btn.dataset.confirm) {
+      btn.dataset.confirm = '1';
+      btn.textContent = 'Confirm end turn';
+      setBanner(`Some units can still attack${idle ? ` (${idle} idle ground units will dig in)` : ''}. Click again to end the turn.`, 2500);
+      setTimeout(() => { delete btn.dataset.confirm; btn.textContent = 'End turn'; }, 2500);
       return;
     }
-    delete $('#btn-end').dataset.confirm;
-    $('#btn-end').textContent = 'End turn';
+    delete btn.dataset.confirm;
+    btn.textContent = 'End turn';
     endTurn();
   }
 
@@ -539,94 +786,105 @@
     if (Game.state) updatePanels();
   }
 
+  function scenarioForm(sc) {
+    const seed = Math.floor(Math.random() * 1e6);
+    const opts = (sc.options || []).map((o) => {
+      if (o.type === 'seed') {
+        return `<label>${esc(o.label)}<span class="row"><input data-opt="${o.id}" inputmode="numeric" value="${seed}"><button type="button" class="reroll" title="Random seed">⟳</button></span></label>`;
+      }
+      return `<label>${esc(o.label)}<select data-opt="${o.id}">${o.choices.map(([v, l]) => `<option value="${v}" ${v === o.value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+    }).join('');
+    return `
+      <label>Play as<select id="f-role">${sc.roles.map((r) => `<option value="${r.id}">${esc(r.label)}</option>`).join('')}</select></label>
+      ${opts}
+      <label class="check"><input type="checkbox" id="f-fog" checked> Fog of war</label>`;
+  }
+
   function showMenu() {
     const inGame = !!Game.state && !Game.state.over;
     const hasSave = !Game.state && Game.hasSave();
-    const seed = Math.floor(Math.random() * 1e6);
+    const list = Object.values(WG.SCENARIOS);
+    let current = list.find((s) => s.id === 'taiwan') || list[0];
     showModal(`
       <h2 class="title">HEX COMMAND</h2>
       <p class="sub">Operational hex wargame with NATO symbology. Runs entirely in your browser.</p>
-      <div class="form">
-        <label>Mode
-          <select id="f-mode">
-            <option value="blue">Play Blue vs AI</option>
-            <option value="red">Play Red vs AI</option>
-            <option value="hotseat">Hotseat (2 players)</option>
-            <option value="watch">AI vs AI (watch)</option>
-          </select></label>
-        <label>Map size
-          <select id="f-size">
-            <option value="s">Small (24×16)</option>
-            <option value="m" selected>Medium (32×22)</option>
-            <option value="l">Large (40×26)</option>
-          </select></label>
-        <label>Turns
-          <select id="f-turns"><option>10</option><option selected>15</option><option>20</option></select></label>
-        <label>Map seed
-          <span class="row"><input id="f-seed" inputmode="numeric" value="${seed}"><button type="button" id="f-reroll" title="Random seed">⟳</button></span></label>
-        <label class="check"><input type="checkbox" id="f-fog" checked> Fog of war</label>
-      </div>
+      <div class="scen-list">${list.map((s) => `<button class="scen ${s === current ? 'on' : ''}" data-scen="${s.id}"><b>${esc(s.name)}</b><span>${esc(s.description)}</span></button>`).join('')}</div>
+      <div class="form" id="f-form">${scenarioForm(current)}</div>
       <div class="btns">
         ${inGame ? '<button id="f-resume">Resume</button>' : ''}
         ${hasSave ? '<button id="f-continue">Continue saved game</button>' : ''}
         <button id="f-start" class="primary">Start new game</button>
       </div>`, () => {
-      $('#f-reroll').onclick = () => { $('#f-seed').value = Math.floor(Math.random() * 1e6); };
+      const bindForm = () => {
+        document.querySelectorAll('.reroll').forEach((b) => {
+          b.onclick = () => { b.parentElement.querySelector('input').value = Math.floor(Math.random() * 1e6); };
+        });
+      };
+      bindForm();
+      document.querySelectorAll('.scen').forEach((b) => {
+        b.onclick = () => {
+          current = WG.SCENARIOS[b.dataset.scen];
+          document.querySelectorAll('.scen').forEach((x) => x.classList.toggle('on', x === b));
+          $('#f-form').innerHTML = scenarioForm(current);
+          bindForm();
+        };
+      });
       if (inGame) $('#f-resume').onclick = closeModal;
       if (hasSave) $('#f-continue').onclick = () => { closeModal(); continueGame(); };
       $('#f-start').onclick = () => {
-        const mode = $('#f-mode').value;
-        const [cols, rows] = SIZES[$('#f-size').value];
-        const players = {
-          blue: { blue: 'human', red: 'ai', hotseat: 'human', watch: 'ai' },
-          red: { blue: 'ai', red: 'human', hotseat: 'human', watch: 'ai' },
-        };
-        const seedVal = parseInt($('#f-seed').value, 10);
-        closeModal();
-        startGame({
-          seed: Number.isFinite(seedVal) ? Math.abs(seedVal) : Math.floor(Math.random() * 1e6),
-          cols, rows,
-          maxTurns: parseInt($('#f-turns').value, 10),
-          fog: $('#f-fog').checked,
-          players: { blue: players.blue[mode], red: players.red[mode] },
+        const role = current.roles.find((r) => r.id === $('#f-role').value);
+        const options = {};
+        document.querySelectorAll('[data-opt]').forEach((i) => {
+          options[i.dataset.opt] = i.tagName === 'INPUT' ? Math.abs(parseInt(i.value, 10)) || Math.floor(Math.random() * 1e6) : i.value;
         });
+        const fog = $('#f-fog').checked;
+        closeModal();
+        startGame({ scenario: current.id, controllers: role.controllers, fog, options });
       };
     }, !inGame);
   }
 
   function showHelp() {
     const sym = (type, side) => `<svg class="usym sm" viewBox="-26 -30 52 50">${Symbols.build(type, side)}</svg>`;
-    const rows = Object.entries(UNIT_TYPES).map(([k, t]) =>
-      `<tr><td>${sym(k, 'blue')}${sym(k, 'red')}</td><td><b>${t.name}</b></td><td>${t.atk}</td><td>${t.def}</td><td>${t.mp}</td><td>${t.range}</td><td>${t.move}</td></tr>`).join('');
-    const terr = Object.values(TERRAIN).map((t) => {
+    const sc = Game.scenario;
+    const types = sc && sc.unitTypes ? sc.unitTypes : Object.keys(UNIT_TYPES).filter((k) => UNIT_TYPES[k].domain === 'land' && WG.ORBAT.includes(k));
+    const rows = types.map((k) => {
+      const t = UNIT_TYPES[k];
+      const atk = [t.atk ? `${t.atk}${t.range > 1 ? `/r${t.range}` : ''}` : '', t.sea ? `ship ${t.sea.atk}/r${t.sea.range}` : '', t.ad ? `AD ${t.ad.ad}` : ''].filter(Boolean).join(', ') || '—';
+      return `<tr><td>${sym(k, 'blue')}${sym(k, 'red')}</td><td><b>${t.name}</b></td><td>${atk}</td><td>${t.def}</td><td>${t.mp}</td><td>${t.move}</td></tr>`;
+    }).join('');
+    const terr = Object.values(TERRAIN).filter((t) => !t.sea).map((t) => {
       const c = (n) => (isFinite(n) ? n : '—');
       return `<tr><td><i class="sw" style="background:${t.color}"></i>${t.name}</td><td>×${t.def}</td><td>${c(t.cost.foot)} / ${c(t.cost.tracked)} / ${c(t.cost.wheeled)}</td></tr>`;
     }).join('');
+    const extra = (sc && sc.helpHtml) ? sc.helpHtml(Game) : '';
+    const tabHelp = tabs.map((t) => (t.helpHtml ? t.helpHtml() : '')).join('');
     showModal(`
       <h2>How to play</h2>
       <div class="help">
-        <p><b>Goal:</b> at the end of every turn each side scores the VP of every town it holds (capitals ★ are worth 5).
-        Most VP after the last turn wins; destroying the whole enemy force wins immediately.</p>
+        ${extra || `<p><b>Goal:</b> at the end of every turn each side scores the VP of every town it holds (capitals ★ are worth 5).
+        Most VP after the last turn wins; destroying the whole enemy force wins immediately.</p>`}
         <h3>Controls</h3>
         <ul>
-          <li><b>Click</b> a unit to select it; highlighted hexes show where it can move, red outlines show targets.</li>
+          <li><b>Click</b> a unit to select it; highlighted hexes show where it can move, red outlines show targets. Click again to cycle through a land and naval unit sharing a hex.</li>
           <li><b>Click</b> a highlighted hex to move, or a red-outlined enemy to attack (hover first for the odds).</li>
           <li><b>Drag</b> to pan, <b>wheel</b>/pinch to zoom. <b>Right-click</b>/Esc deselects.</li>
           <li>Keys: <kbd>N</kbd>/<kbd>Space</kbd> next unit · <kbd>U</kbd> undo move · <kbd>E</kbd> end turn · <kbd>F</kbd> fit map · <kbd>+</kbd>/<kbd>−</kbd> zoom</li>
         </ul>
-        <h3>Rules</h3>
+        <h3>Ground combat</h3>
         <ul>
           <li><b>Zones of control:</b> moving next to an enemy unit ends movement.</li>
-          <li><b>One attack per unit per turn.</b> Attacking ends the unit's movement. Artillery fires up to 3 hexes with no return fire, but cannot fire after moving.</li>
-          <li><b>Combat odds</b> compare attack vs defense, scaled by strength. Terrain, digging in, flanking (+15% per other friendly unit adjacent to the target), HQ command (+20% within 3 hexes) and anti-armor bonuses all apply.</li>
+          <li><b>One attack per unit per turn.</b> Attacking ends the unit's movement. Artillery, rockets and missile batteries cannot fire after moving.</li>
+          <li><b>Combat odds</b> compare attack vs defense, scaled by strength. Terrain, digging in, flanking (+15% per other friendly unit adjacent to the target), HQ command (+20% within 3 hexes), supply and anti-armor bonuses all apply.</li>
           <li>Beaten defenders may <b>retreat</b>; a unit with nowhere to go loses an extra step. Victorious attackers advance into the vacated hex.</li>
           <li>Units that don't move during their turn <b>dig in</b> (+30% defense).</li>
+          <li><b>Supply:</b> ground units must trace a path of up to 8 hexes to a supply source, not through enemy zones of control. Out of supply units attack at half strength and start losing strength after 3 turns (red ! badge).</li>
           <li><b>Fog of war:</b> you only see enemies near your units and towns. Forest and towns conceal units at range. Moving into contact halts movement.</li>
-          <li><b>Roads</b> cost 0.5 per hex. Wheeled units can't enter marsh, mountains or rivers except by road or bridge. A unit that hasn't moved can always move one hex.</li>
         </ul>
+        ${tabHelp}
         <h3>Units</h3>
-        <table class="tbl"><tr><th>Symbol</th><th>Type</th><th>Atk</th><th>Def</th><th>MP</th><th>Rng</th><th>Mobility</th></tr>${rows}</table>
-        <p class="small muted">Blue uses the NATO friendly frame (rectangle), Red the hostile frame (diamond). Marks above the frame show echelon: II battalion, X brigade. Bars below show remaining strength.</p>
+        <table class="tbl"><tr><th>Symbol</th><th>Type</th><th>Attack</th><th>Def</th><th>MP</th><th>Mobility</th></tr>${rows}</table>
+        <p class="small muted">Blue uses the NATO friendly frames (rectangle on land, circle at sea), Red the hostile frame (diamond). Submarines use the half-frame below the waterline. Marks above the frame show echelon: II battalion, III regiment, X brigade. Bars below show remaining strength.</p>
         <h3>Terrain</h3>
         <table class="tbl"><tr><th>Terrain</th><th>Defense</th><th>Move foot / tracked / wheeled</th></tr>${terr}</table>
       </div>
@@ -638,9 +896,9 @@
     return new Promise((resolve) => {
       $('#mapwrap').classList.add('blind');
       showModal(`
-        <h2>${cap(side)} commander</h2>
-        <p>Pass the device to the <b class="${side}">${cap(side)}</b> player, then continue.</p>
-        <div class="btns"><button id="h-go" class="primary">I'm ${cap(side)}, continue</button></div>`, () => {
+        <h2>${esc(Game.sideName(side))} commander</h2>
+        <p>Pass the device to the <b class="${side}">${esc(Game.sideName(side))}</b> player, then continue.</p>
+        <div class="btns"><button id="h-go" class="primary">Continue as ${esc(Game.sideName(side))}</button></div>`, () => {
         $('#h-go').onclick = () => {
           $('#mapwrap').classList.remove('blind');
           closeModal();
@@ -652,21 +910,25 @@
 
   function showGameOver() {
     const s = Game.state;
-    const title = s.winner === 'draw' ? 'Draw' : `${cap(s.winner)} victory`;
-    const reason = s.reason === 'annihilation'
+    const sc = Game.scenario;
+    const title = s.winner === 'draw' ? 'Draw' : `${Game.sideName(s.winner)} victory`;
+    const reason = s.reasonText || (s.reason === 'annihilation'
       ? 'The opposing force has been destroyed.'
-      : `After ${s.maxTurns} turns the fighting ends.`;
-    const alive = (side) => Game.unitsOf(side).length;
-    const towns = (side) => Game.map.cities.filter((c) => c.city.owner === side).length;
+      : `After ${s.maxTurns} turns the fighting ends.`);
+    const alive = (side) => Game.allUnitsOf(side).length;
+    const towns = (side) => Game.map.cities.filter((c) => c.city.owner === side && c.city.vp).length;
     setBanner('');
+    const extraRows = sc.resultRows ? sc.resultRows(Game) : '';
     showModal(`
-      <h2 class="${s.winner}">${title}</h2>
-      <p>${reason}</p>
+      <h2 class="${s.winner}">${esc(title)}</h2>
+      <p>${esc(reason)}</p>
       <table class="tbl result">
-        <tr><th></th><th class="blue">Blue</th><th class="red">Red</th></tr>
+        <tr><th></th><th class="blue">${esc(Game.sideName('blue'))}</th><th class="red">${esc(Game.sideName('red'))}</th></tr>
         <tr><td>Victory points</td><td>${s.vp.blue}</td><td>${s.vp.red}</td></tr>
-        <tr><td>Towns held</td><td>${towns('blue')}</td><td>${towns('red')}</td></tr>
-        <tr><td>Units remaining</td><td>${alive('blue')} / ${WG.ORBAT.length}</td><td>${alive('red')} / ${WG.ORBAT.length}</td></tr>
+        <tr><td>Objectives held</td><td>${towns('blue')}</td><td>${towns('red')}</td></tr>
+        <tr><td>Units remaining</td><td>${alive('blue')}</td><td>${alive('red')}</td></tr>
+        <tr><td>Units lost</td><td>${s.lost.blue || 0}</td><td>${s.lost.red || 0}</td></tr>
+        ${extraRows}
       </table>
       <div class="btns"><button id="g-view">View map</button><button id="g-new" class="primary">New game</button></div>`, () => {
       $('#g-view').onclick = closeModal;
@@ -678,9 +940,15 @@
   function begin() {
     token++;
     busy = false;
+    humanPhase = false;
     sel = null;
     hoverTile = null;
+    mode = null;
     Render.drawMap(Game.map);
+    for (const t of tabs) if (t.onNewGame) t.onNewGame();
+    activeTab = tabs.find((t) => !t.visible || t.visible()) ? activeTab : 'log';
+    if (!tabs.find((t) => t.id === activeTab && (!t.visible || t.visible()))) activeTab = 'log';
+    renderTabBar();
     computeSel();
     initialView();
     refresh();
@@ -702,8 +970,14 @@
     svg = $('#map');
     Render.init(svg);
     bindInput();
+    renderTabBar();
     showMenu();
   }
+
+  WG.UI = {
+    registerTab, showTab, setMode, cancelMode, refresh, setBanner, humanTurn, viewer, knownFor, isVisibleTo,
+    actions, esc, centerOn, get busy() { return busy; }, set busy(v) { busy = v; },
+  };
 
   window.addEventListener('DOMContentLoaded', init);
 })(window.WG);

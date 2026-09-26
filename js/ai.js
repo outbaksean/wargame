@@ -1,19 +1,22 @@
 'use strict';
 
-// Heuristic AI. It only knows about enemy units its own side has spotted.
+// Heuristic AI for ground units. It only knows about enemy units its side has spotted.
+// Scenario-specific or domain-specific planners (naval, air) register in WG.AI.planners.
 (function (WG) {
   const { Hex, UNIT_TYPES } = WG;
-  const ORDER = ['recon', 'armor', 'mech', 'inf', 'at', 'hq'];
+  const ORDER = ['recon', 'armor', 'amphmech', 'mech', 'marine', 'inf', 'airborne', 'at', 'lm', 'hq', 'sam', 'ew'];
+  const FIRE_FIRST = (t) => t.indirect || t.sea;
 
   const AI = {
     fields: new Map(),
     mapRef: null,
+    planners: [],
 
     // Movement-cost distance from every hex to `goalKey` for a mobility class (ignores units).
-    field(goalKey, cls) {
+    field(goalKey, cls, side) {
       const G = WG.Game;
       if (this.mapRef !== G.map) { this.fields.clear(); this.mapRef = G.map; }
-      const id = goalKey + '#' + cls;
+      const id = goalKey + '#' + cls + (cls === 'naval' ? '#' + side : '');
       if (this.fields.has(id)) return this.fields.get(id);
       const dist = new Map([[goalKey, 0]]);
       const pq = new WG.PQ();
@@ -25,7 +28,7 @@
         for (const n of Hex.neighbors(t.q, t.r)) {
           const nt = G.tile(n.q, n.r);
           if (!nt) continue;
-          const c = G.classCost(cls, nt, t);
+          const c = G.classCost(cls, nt, t, side);
           if (!isFinite(c)) continue;
           const nd = d + c;
           if (nd < (dist.has(nt.key) ? dist.get(nt.key) : Infinity)) {
@@ -38,72 +41,90 @@
       return dist;
     },
 
-    // Rough measure of enemy firepower that could hit hex (q, r) next turn.
+    // Rough measure of enemy ground firepower that could hit hex (q, r) next turn.
     threat(q, r, enemies) {
       let t = 0;
       for (const e of enemies) {
-        const d = Hex.distance(q, r, e.q, e.r);
         const et = UNIT_TYPES[e.type];
+        if (et.domain !== 'land' || !et.atk) continue;
+        const d = Hex.distance(q, r, e.q, e.r);
         const reach = et.indirect ? et.range : 2;
         if (d <= reach) t += (et.atk * WG.Game.strength(e)) / Math.max(1, d);
       }
       return t;
     },
 
-    async takeTurn(side, ctx) {
+    knownEnemies(side) {
       const G = WG.Game;
+      const known = G.intel(side);
+      return G.state.units.filter((e) => e.side !== side && !e.carrier && known.has(e.id));
+    },
+
+    async takeTurn(side, factions, ctx) {
+      const G = WG.Game;
+      const mine = (u) => u.side === side && factions.includes(u.faction) && !u.carrier;
       const claimed = new Map();
-      const units = () => G.unitsOf(side);
-      // 1. Artillery with targets fires first to soften the enemy.
-      for (const u of units().filter((x) => x.type === 'arty')) {
+      const plan = { side, factions, claimed, mine };
+      for (const p of this.planners) if (p.before) await p.before(plan, ctx);
+      if (!ctx.alive()) return;
+      // 1. Fire support with targets fires first to soften the enemy.
+      for (const u of G.state.units.filter((x) => mine(x) && UNIT_TYPES[x.type].domain === 'land' && FIRE_FIRST(UNIT_TYPES[x.type]))) {
         if (!ctx.alive()) return;
         await this.tryAttack(u, side, ctx, true);
       }
-      // 2. Manoeuvre units.
-      const movers = units().filter((x) => x.type !== 'arty')
+      // 2. Planners for other domains (ships, air...).
+      for (const p of this.planners) if (p.act) { await p.act(plan, ctx); if (!ctx.alive()) return; }
+      // 3. Manoeuvre units.
+      const movers = G.state.units.filter((x) => mine(x) && UNIT_TYPES[x.type].domain === 'land' && !FIRE_FIRST(UNIT_TYPES[x.type]))
         .sort((a, b) => ORDER.indexOf(a.type) - ORDER.indexOf(b.type));
       for (const u of movers) {
         if (!ctx.alive()) return;
-        if (!G.alive(u)) continue;
+        if (!G.alive(u) || u.carrier) continue;
         if (await this.tryAttack(u, side, ctx, false)) continue;
         await this.moveUnit(u, side, ctx, claimed);
       }
-      // 3. Remaining artillery: fire at anything newly spotted, else reposition.
-      for (const u of units().filter((x) => x.type === 'arty')) {
+      // 4. Remaining fire units: shoot at anything newly spotted, else reposition.
+      for (const u of G.state.units.filter((x) => mine(x) && UNIT_TYPES[x.type].domain === 'land' && FIRE_FIRST(UNIT_TYPES[x.type]))) {
         if (!ctx.alive()) return;
         if (!G.alive(u) || u.attacked) continue;
         if (await this.tryAttack(u, side, ctx, true)) continue;
         await this.moveUnit(u, side, ctx, claimed);
       }
+      for (const p of this.planners) if (p.after) { await p.after(plan, ctx); if (!ctx.alive()) return; }
+    },
+
+    scoreAttack(u, e, from, enemies) {
+      const G = WG.Game;
+      const ut = UNIT_TYPES[u.type];
+      const o = G.odds(u, e, from);
+      const et = UNIT_TYPES[e.type];
+      let s = o.expDef * et.value - o.expAtt * ut.value * 1.3;
+      if (o.expDef >= e.steps) s += 1.5 * et.value;
+      const t = G.tile(e.q, e.r);
+      if (t.city && t.city.vp) s += t.city.vp * 0.4;
+      if (o.mode === 'land' && !o.ranged && o.ratio < 0.9) s -= 2;
+      if (ut.expendable) s -= ut.value * 0.3;
+      if (!o.ranged) s -= this.threat(from.q, from.r, enemies) * 0.04;
+      return s;
     },
 
     async tryAttack(u, side, ctx, stayOnly) {
       const G = WG.Game;
       if (!G.alive(u) || !G.canAttack(u)) return false;
       const ut = UNIT_TYPES[u.type];
-      const known = G.visibleEnemies(side);
-      const enemies = G.state.units.filter((e) => e.side !== side && known.has(e.id));
+      const known = G.intel(side);
+      const enemies = this.knownEnemies(side);
       if (!enemies.length) return false;
       const here = Hex.key(u.q, u.r);
       let options = [here];
-      if (!stayOnly && !ut.indirect && u.mpLeft > 0) {
+      if (!stayOnly && !FIRE_FIRST(ut) && u.mpLeft > 0) {
         options = options.concat(G.destinations(u, G.reachable(u, known), known));
       }
       let best = null;
       for (const k of options) {
         const p = Hex.parse(k);
-        const th = ut.indirect ? 0 : this.threat(p.q, p.r, enemies);
-        for (const e of enemies) {
-          const d = Hex.distance(p.q, p.r, e.q, e.r);
-          if (d < 1 || d > ut.range) continue;
-          const o = G.combatOdds(u, e, p);
-          const et = UNIT_TYPES[e.type];
-          let s = o.expDef * et.value - o.expAtt * ut.value * 1.3;
-          if (o.expDef >= e.steps) s += 1.5 * et.value;
-          const et2 = G.tile(e.q, e.r);
-          if (et2.city) s += et2.city.vp * 0.4;
-          if (!o.ranged && o.ratio < 0.9) s -= 2;
-          s -= th * 0.04;
+        for (const e of G.targets(u, known, p)) {
+          let s = this.scoreAttack(u, e, p, enemies);
           if (k === here) s += 0.1;
           if (!best || s > best.s) best = { s, k, e };
         }
@@ -114,11 +135,23 @@
         if (!ctx.alive() || !G.alive(u)) return true;
       }
       const e = best.e;
-      if (G.alive(e) && G.canAttack(u) && G.visibleEnemies(side).has(e.id) &&
-          Hex.distance(u.q, u.r, e.q, e.r) <= ut.range) {
-        await ctx.attack(u, e);
-      }
+      if (G.alive(e) && G.canAttack(u) && G.targets(u, G.intel(side)).includes(e)) await ctx.attack(u, e);
       return true;
+    },
+
+    centroidKey(list, move, side) {
+      const G = WG.Game;
+      const x = list.reduce((s, m) => s + m.q, 0) / list.length;
+      const y = list.reduce((s, m) => s + m.r, 0) / list.length;
+      const h = Hex.round(x, y);
+      let best = null;
+      for (const t of G.map.list) {
+        if ((move === 'naval') !== G.isSea(t)) continue;
+        if (move !== 'naval' && !isFinite(G.terr(t).cost[move])) continue;
+        const d = Hex.distance(t.q, t.r, h.q, h.r);
+        if (!best || d < best.d) best = { d, key: t.key };
+      }
+      return best && best.key;
     },
 
     chooseGoal(u, side, enemies, claimed) {
@@ -129,59 +162,61 @@
         const d = Hex.distance(u.q, u.r, e.q, e.r);
         return !b || d < b.d ? { e, d } : b;
       }, null);
-      const centroidKey = (list) => {
-        const x = list.reduce((s, m) => s + m.q, 0) / list.length;
-        const y = list.reduce((s, m) => s + m.r, 0) / list.length;
-        const h = Hex.round(x, y);
-        let best = null;
-        for (const t of G.map.list) {
-          if (!isFinite(G.terr(t).cost[ut.move])) continue;
-          const d = Hex.distance(t.q, t.r, h.q, h.r);
-          if (!best || d < best.d) best = { d, key: t.key };
-        }
-        return best && best.key;
-      };
-      const front = G.unitsOf(side).filter((m) => m !== u && m.type !== 'arty' && m.type !== 'hq');
+      const landEnemies = enemies.filter((e) => UNIT_TYPES[e.type].domain === 'land');
+      const front = G.unitsOf(side).filter((m) => m !== u && UNIT_TYPES[m.type].domain === 'land' && !FIRE_FIRST(UNIT_TYPES[m.type]) && m.type !== 'hq');
+      const sameIsland = (k) => { const a = G.tile(u.q, u.r), b = G.map.tiles.get(k); return !a.island || a.island === b.island; };
 
-      if (u.type === 'hq') return front.length ? { mode: 'follow', key: centroidKey(front) } : { mode: 'hold' };
-      if (u.type === 'arty') {
-        if (enemies.length) return { mode: 'standoff', key: Hex.key(near(enemies).e.q, near(enemies).e.r) };
-        return front.length ? { mode: 'follow', key: centroidKey(front) } : { mode: 'hold' };
+      if (u.type === 'hq' || u.type === 'sam' || u.type === 'ew') {
+        const f = front.filter((m) => sameIsland(Hex.key(m.q, m.r)));
+        return f.length ? { mode: 'follow', key: this.centroidKey(f, ut.move, side) } : { mode: 'hold' };
+      }
+      if (FIRE_FIRST(ut)) {
+        const reachable = landEnemies.filter((e) => sameIsland(Hex.key(e.q, e.r)));
+        if (reachable.length) { const n = near(reachable); return { mode: 'standoff', key: Hex.key(n.e.q, n.e.r), range: Math.max(2, ut.range - 0.5) }; }
+        const f = front.filter((m) => sameIsland(Hex.key(m.q, m.r)));
+        return f.length ? { mode: 'follow', key: this.centroidKey(f, ut.move, side) } : { mode: 'hold' };
       }
 
       // Garrison a threatened town we are standing in.
       const t = G.tile(u.q, u.r);
-      if (t.city && t.city.owner === side && enemies.some((e) => Hex.distance(e.q, e.r, u.q, u.r) <= 4)) {
+      if (t.city && t.city.owner === side && landEnemies.some((e) => Hex.distance(e.q, e.r, u.q, u.r) <= 4)) {
         return { mode: 'hold' };
       }
 
+      const sc = G.scenario;
       let best = null;
       for (const c of G.map.cities) {
-        const d = this.field(c.key, ut.move).get(here);
+        const d = this.field(c.key, ut.move, side).get(here);
         if (d === undefined) continue;
+        const vp = c.city.vp || (sc.cityValue ? sc.cityValue(c, side) : 0);
+        if (!vp) continue;
         let v;
         if (c.city.owner !== side) {
-          v = c.city.vp * 4 + (c.city.capital ? 3 : 0);
+          v = vp * 4 + (c.city.capital ? 3 : 0);
         } else {
-          const threatened = enemies.some((e) => Hex.distance(e.q, e.r, c.q, c.r) <= 3);
-          const g = G.unitAt(c.q, c.r, u);
+          const threatened = landEnemies.some((e) => Hex.distance(e.q, e.r, c.q, c.r) <= 3);
+          const g = G.unitAt(c.q, c.r, u, 'land');
           if (!threatened || (g && g.side === side)) continue;
-          v = c.city.vp * 4 + 3;
+          v = vp * 4 + 3;
         }
         const s = v - d * 0.6 - (claimed.get(c.key) || 0) * 3;
         if (!best || s > best.s) best = { s, key: c.key };
       }
-      if (enemies.length && u.type !== 'recon') {
-        const n = near(enemies);
-        const key = Hex.key(n.e.q, n.e.r);
-        const d = this.field(key, ut.move).get(here);
-        if (d !== undefined) {
-          const s = 5 + (1 - G.strength(n.e)) * 3 - d * 0.6 - (claimed.get(key) || 0) * 2;
+      if (landEnemies.length && u.type !== 'recon') {
+        let n = null;
+        for (const e of landEnemies) {
+          const d = this.field(Hex.key(e.q, e.r), ut.move, side).get(here);
+          if (d !== undefined && (!n || d < n.d)) n = { e, d };
+        }
+        if (n) {
+          const key = Hex.key(n.e.q, n.e.r);
+          const bonus = sc.enemyPriority ? sc.enemyPriority(n.e, side) : 0;
+          const s = 5 + bonus + (1 - G.strength(n.e)) * 3 - n.d * 0.6 - (claimed.get(key) || 0) * 2;
           if (!best || s > best.s) best = { s, key };
         }
       }
       if (!best) {
-        const cap = G.map.cities.find((c) => c.city.capital && c.city.owner !== side);
+        const cap = G.map.cities.find((c) => c.city.capital && c.city.owner !== side && this.field(c.key, ut.move, side).has(here));
         if (!cap) return { mode: 'hold' };
         best = { key: cap.key };
       }
@@ -195,31 +230,31 @@
       const p = Hex.parse(k);
       const t = G.map.tiles.get(k);
       let minE = 99;
-      for (const e of enemies) minE = Math.min(minE, Hex.distance(p.q, p.r, e.q, e.r));
+      for (const e of enemies) if (UNIT_TYPES[e.type].domain === 'land') minE = Math.min(minE, Hex.distance(p.q, p.r, e.q, e.r));
       let s = 0;
       if (goal.mode === 'standoff') {
         const g = Hex.parse(goal.key);
         const d = Hex.distance(p.q, p.r, g.q, g.r);
-        s -= Math.abs(d - 2.5) * 3;
+        s -= Math.abs(d - goal.range) * 3;
         if (minE < 2) s -= 6;
       } else {
-        const d = this.field(goal.key, ut.move).get(k);
+        const d = this.field(goal.key, ut.move, side).get(k);
         s -= d === undefined ? 99 : d;
         if ((goal.mode === 'scout' || goal.mode === 'follow') && minE < 3) s -= (3 - minE) * 3;
       }
       s += (G.terr(t).def - 1) * 1.2;
-      const fragile = ut.indirect || u.type === 'hq' || u.type === 'recon';
+      const fragile = FIRE_FIRST(ut) || u.type === 'hq' || u.type === 'recon' || u.type === 'sam' || u.type === 'ew';
       s -= this.threat(p.q, p.r, enemies) * (fragile ? 0.25 : 0.05);
-      if (t.city && t.city.owner !== side) s += 3 + t.city.vp;
+      if (t.city && t.city.owner !== side) s += 3 + (t.city.vp || 0);
       if (t.terrain === 'river' && !t.road) s -= 1.5;
       return s;
     },
 
     async moveUnit(u, side, ctx, claimed) {
       const G = WG.Game;
-      if (!G.alive(u) || u.mpLeft <= 0) return;
-      const known = G.visibleEnemies(side);
-      const enemies = G.state.units.filter((e) => e.side !== side && known.has(e.id));
+      if (!G.alive(u) || u.mpLeft <= 0 || u.carrier) return;
+      const known = G.intel(side);
+      const enemies = this.knownEnemies(side);
       const goal = this.chooseGoal(u, side, enemies, claimed);
       if (goal.mode === 'hold' || !goal.key) return;
       const here = Hex.key(u.q, u.r);
@@ -232,7 +267,7 @@
       }
       if (bestK !== here) await ctx.move(u, bestK);
       // Moving may have revealed a juicy target.
-      if (ctx.alive() && G.alive(u) && !UNIT_TYPES[u.type].indirect) await this.tryAttack(u, side, ctx, true);
+      if (ctx.alive() && G.alive(u) && !FIRE_FIRST(UNIT_TYPES[u.type])) await this.tryAttack(u, side, ctx, true);
     },
   };
 

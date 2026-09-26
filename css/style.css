@@ -84,7 +84,10 @@ main { flex: 1; display: flex; min-height: 0; }
 .actions button { flex: 1; padding: 8px 6px; }
 .actions .primary { flex: 1.4; }
 #logpanel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 12px 0; }
-#logpanel h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+#tabbar { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+#tabbar button { padding: 3px 10px; font-size: 12px; border-radius: 999px; }
+#tabbar button.on { background: #3a4431; border-color: #6d7a55; color: #fff; }
+#tabbody { overflow-y: auto; padding-bottom: 12px; font-size: 13px; }
 #log { list-style: none; margin: 0; padding: 0 0 12px; overflow-y: auto; font-size: 12.5px; }
 #log li { padding: 4px 0 4px 8px; border-left: 3px solid var(--line); margin-bottom: 3px; }
 #log li.blue { border-color: var(--blue); }
@@ -242,3 +245,47 @@ kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 4
   #topbar { gap: 8px; }
   .brand { display: none; }
 }
+
+/* ---------- scenario menu */
+.scen-list { display: grid; gap: 8px; margin-top: 14px; }
+.scen { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; }
+.scen span { color: var(--muted); font-size: 12.5px; }
+.scen.on { border-color: var(--accent); background: #2e2c1f; }
+
+/* ---------- naval & special units */
+.hex.sea { stroke: rgba(40, 80, 120, 0.18); }
+.coastline { fill: none; stroke: #5d7a8c; stroke-width: 2.2; stroke-linecap: round; }
+.anchor { opacity: 0.85; }
+.runway { opacity: 0.9; }
+.cargo { fill: #ffd84a; stroke: #3b300c; stroke-width: 1.2; }
+.cargo-t { font: 800 9px system-ui, sans-serif; text-anchor: middle; fill: #3b300c; }
+.oos circle { fill: #e0352b; stroke: #fff; stroke-width: 1.2; }
+.oos text { font: 900 10px system-ui, sans-serif; text-anchor: middle; fill: #fff; }
+.emcon circle { fill: #555; stroke: #fff; stroke-width: 1; }
+.emcon path { stroke: #fff; stroke-width: 1.6; }
+.mine { opacity: 0.85; }
+.mine.blue path, .mine.blue circle { stroke: #1b3d6e; fill: #1b3d6e; }
+.mine.red path, .mine.red circle { stroke: #6e1b1b; fill: #6e1b1b; }
+.beachhead { stroke: #222; stroke-width: 1; }
+.map-label { font: italic 600 22px Georgia, serif; fill: rgba(30, 60, 90, 0.45); text-anchor: middle; letter-spacing: 0.25em; }
+.map-label.land { fill: rgba(70, 60, 40, 0.4); font-size: 18px; }
+.city-label.major { font-size: 12.5px; }
+.landing { fill: rgba(80, 220, 120, 0.3); stroke: #4ade80; stroke-width: 2.5; }
+.landing.assault { fill: rgba(255, 60, 40, 0.25); stroke: #ff5a3c; stroke-dasharray: 6 4; }
+.embark { fill: rgba(255, 216, 74, 0.25); stroke: #ffd84a; stroke-width: 2.5; stroke-dasharray: 5 4; }
+.range { fill: none; stroke-width: 2; stroke-dasharray: 3 6; }
+.range.ad { stroke: rgba(60, 130, 255, 0.8); fill: rgba(60, 130, 255, 0.06); }
+.range.jam { stroke: rgba(200, 80, 255, 0.85); fill: rgba(200, 80, 255, 0.08); }
+.range.wpn { stroke: rgba(255, 120, 60, 0.7); }
+.tracer.missile { stroke: #ff7043; stroke-width: 3; }
+#map.targeting { cursor: crosshair; }
+.zonecell { stroke: none; pointer-events: none; }
+.tag.bad { color: #ff9b94; border-color: #7a3530; }
+.tag.emit { color: #9ecbff; border-color: #34557a; }
+.unit-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.unit-actions button { font-size: 12.5px; padding: 4px 10px; }
+.cargo-list { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.cargo-item { display: flex; align-items: center; gap: 6px; text-align: left; font-size: 12.5px; padding: 3px 8px; }
+.cargo-item.on { border-color: #4ade80; }
+.usym.xs { width: 30px; height: 28px; padding: 1px; border-radius: 4px; }
+.stats small { color: var(--muted); font-weight: 400; font-size: 11px; }
