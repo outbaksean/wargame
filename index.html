@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hex Command</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">HEX COMMAND</div>
+    <div id="turninfo"></div>
+    <div class="spacer"></div>
+    <div id="vpinfo"></div>
+    <button id="btn-help" title="Rules and controls (H)">Help</button>
+    <button id="btn-menu">Menu</button>
+  </header>
+  <main>
+    <div id="mapwrap">
+      <svg id="map" xmlns="http://www.w3.org/2000/svg"><defs></defs></svg>
+      <div id="banner"></div>
+      <div id="zoomctl">
+        <button id="zoom-in" title="Zoom in (+)">+</button>
+        <button id="zoom-out" title="Zoom out (−)">−</button>
+        <button id="zoom-fit" title="Fit map (F)">⤢</button>
+      </div>
+    </div>
+    <aside id="sidebar">
+      <section id="unitpanel" class="panel"></section>
+      <section id="hexpanel" class="panel"></section>
+      <div class="actions">
+        <button id="btn-next" title="Next unit (N / Space)">Next unit</button>
+        <button id="btn-undo" title="Undo last move (U)">Undo</button>
+        <button id="btn-end" class="primary" title="End turn (E)">End turn</button>
+      </div>
+      <section id="logpanel">
+        <h3>Operations log</h3>
+        <ol id="log"></ol>
+      </section>
+    </aside>
+  </main>
+  <div id="modal" class="hidden"><div id="modal-box"></div></div>
+
+  <script src="js/hex.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/mapgen.js"></script>
+  <script src="js/symbols.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
