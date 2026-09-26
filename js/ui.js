@@ -147,6 +147,7 @@
     $('#turninfo').innerHTML =
       `<span class="turn">Turn <b>${s.turn}</b> / ${s.maxTurns}</span>` +
       `<span class="chip ${s.side}">${esc(Game.sideName(s.side))} · ${esc(who)}</span>${extra}`;
+    if (Game.scenario.vpHtml) { $('#vpinfo').innerHTML = Game.scenario.vpHtml(Game); return; }
     $('#vpinfo').innerHTML =
       `<span class="vp blue" title="Victory points (income per turn)">${esc(Game.sideName('blue'))} <b>${s.vp.blue}</b> <small>+${inc.blue}</small></span>` +
       `<span class="vp red" title="Victory points (income per turn)">${esc(Game.sideName('red'))} <b>${s.vp.red}</b> <small>+${inc.red}</small></span>`;
@@ -188,7 +189,7 @@
 
   // ---------- side panels
   function symbolSvg(u, cls = 'usym') {
-    return `<svg class="${cls}" viewBox="-26 -30 52 50">${Symbols.build(u.type, u.side, { echelon: u.echelon, country: u.country })}</svg>`;
+    return `<svg class="${cls}" viewBox="-32 -31 64 52">${Symbols.build(u.type, u.side, { echelon: u.echelon, country: u.country })}</svg>`;
   }
 
   function unitCard(u) {
@@ -209,7 +210,8 @@
     const stat = (label, val) => `<div><span>${label}</span><b>${val}</b></div>`;
     const stats = [];
     if (ut.atk) stats.push(stat('Attack', `${ut.atk}${ut.range > 1 ? ` <small>r${ut.range}</small>` : ''}`));
-    if (ut.sea) stats.push(stat('Anti-ship', `${ut.sea.atk} <small>r${ut.sea.range}</small>`));
+    if (ut.sea) stats.push(stat(ut.sea.kind === 'torpedo' ? 'Torpedo' : 'Anti-ship', `${ut.sea.atk} <small>r${ut.sea.range}</small>`));
+    if (ut.sea && ut.sea.ammo && own) stats.push(stat('Salvos', `${u.ammo}/${ut.sea.ammo}`));
     if (ut.asw) stats.push(stat('ASW', `${ut.asw.atk} <small>r${ut.asw.range}</small>`));
     if (ut.ad) stats.push(stat('Air def.', `${ut.ad.ad}${ut.ad.bmd ? `/${ut.ad.bmd}` : ''} <small>r${ut.ad.range}</small>`));
     if (ut.jam) stats.push(stat('Jam radius', ut.jam));
@@ -845,7 +847,7 @@
   }
 
   function showHelp() {
-    const sym = (type, side) => `<svg class="usym sm" viewBox="-26 -30 52 50">${Symbols.build(type, side)}</svg>`;
+    const sym = (type, side) => `<svg class="usym sm" viewBox="-32 -31 64 52">${Symbols.build(type, side)}</svg>`;
     const sc = Game.scenario;
     const types = sc && sc.unitTypes ? sc.unitTypes : Object.keys(UNIT_TYPES).filter((k) => UNIT_TYPES[k].domain === 'land' && WG.ORBAT.includes(k));
     const rows = types.map((k) => {

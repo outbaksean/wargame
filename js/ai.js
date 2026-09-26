@@ -215,6 +215,10 @@
           if (!best || s > best.s) best = { s, key };
         }
       }
+      if (!best && AI.Naval) {
+        const lg = AI.Naval.landGoal(u, side);
+        if (lg) return lg;
+      }
       if (!best) {
         const cap = G.map.cities.find((c) => c.city.capital && c.city.owner !== side && this.field(c.key, ut.move, side).has(here));
         if (!cap) return { mode: 'hold' };

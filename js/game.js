@@ -58,7 +58,7 @@
           const c = stack.pop();
           for (const n of Hex.neighbors(c.q, c.r)) {
             const nt = map.tiles.get(Hex.key(n.q, n.r));
-            if (nt && nt.island === undefined && !TERRAIN[nt.terrain].sea) { nt.island = id; stack.push(nt); }
+            if (nt && nt.island === undefined && !TERRAIN[nt.terrain].sea && nt.mass === c.mass) { nt.island = id; stack.push(nt); }
           }
         }
       }
@@ -80,6 +80,7 @@
         supplied: true, oos: 0,
       };
       if (ut.capacity) u.cargo = [];
+      if (ut.sea && ut.sea.ammo) u.ammo = ut.sea.ammo;
       if (ut.emitter) u.emitting = true;
       if (spec.echelon) u.echelon = spec.echelon;
       if (spec.country) u.country = spec.country;
@@ -142,16 +143,23 @@
         return Infinity;
       }
       if (TERRAIN[to.terrain].sea) return Infinity;
-      return this.isRoad(from, to) ? 0.5 : this.terr(to).cost[cls];
+      if (this.isRoad(from, to)) return 0.5;
+      if (from.mass !== to.mass) return Infinity; // separate landmasses (no bridge)
+      return this.terr(to).cost[cls];
     },
     moveCost(u, from, to) { return this.classCost(this.type(u).move, from, to, u.side); },
 
     // Does an enemy unit that exerts a zone of control on `layer` sit next to (q, r)?
     // Land units control land; surface combatants control the sea. Submarines are ignored.
+    // Land hexes on different landmasses with no bridge between them.
+    acrossWater(a, b) { return a.mass !== b.mass && !this.isRoad(a, b); },
+
     enemyAdjacent(side, q, r, known, layer = 'land') {
+      const here = this.tile(q, r);
       for (const n of Hex.neighbors(q, r)) {
         const e = this.unitAt(n.q, n.r, null, layer);
         if (!e || e.side === side || (known && !known.has(e.id))) continue;
+        if (layer === 'land' && this.acrossWater(here, this.tile(n.q, n.r))) continue;
         const et = this.type(e);
         if (layer === 'land' && et.domain === 'land') return true;
         if (layer === 'sea' && et.domain === 'sea' && et.sea && !et.expendable) return true;
@@ -246,6 +254,7 @@
             if (lvl < 1 && et.emitter && e.emitting) lvl = 1;
           }
           for (const m of this.modules) if (lvl < 2 && m.intelLevel) lvl = Math.max(lvl, m.intelLevel(side, e));
+          if (lvl < 2 && this.scenario.intelLevel) lvl = Math.max(lvl, this.scenario.intelLevel(this, side, e));
         }
         if (lvl) res.set(e.id, lvl);
       }
@@ -397,6 +406,8 @@
       const t = this.tile(u.q, u.r);
       if (t.city && t.city.owner !== u.side) {
         t.city.owner = u.side;
+        this.state.capturedAt = this.state.capturedAt || {};
+        this.state.capturedAt[t.key] = this.state.turn;
         this.addLog(u.side, `${u.name} captures ${t.city.name}${t.city.capital ? ' (capital)' : ''}`);
         // Enemy ships caught in a captured port are lost.
         const ship = this.unitAt(t.q, t.r, null, 'sea');
@@ -495,7 +506,7 @@
       this.undo = null;
       if (t.home !== u.side && !(t.city && t.city.owner === u.side) && this.state.beachheads[t.key] !== u.side && (t.beach || !t.city)) {
         this.state.beachheads[t.key] = u.side;
-        this.addLog(u.side, `${u.name} lands and establishes a beachhead`);
+        this.addLog(u.side, `${u.name} lands ${this.placeName(t)} and establishes a beachhead`);
       } else {
         this.addLog(u.side, `${u.name} comes ashore`);
       }
@@ -550,9 +561,11 @@
       const d = Hex.distance(from.q, from.r, def.q, def.r);
       if (d < 1 && dt.domain === 'land') return null;
       if (dt.domain === 'land') {
+        if (d === 1 && at.domain === 'land' && !at.indirect && !att.carrier &&
+            this.acrossWater(this.tile(from.q, from.r), this.tile(def.q, def.r))) return null;
         if (at.atk > 0 && d <= at.range && d >= 1) return 'land';
       } else if (dt.domain === 'sea') {
-        if (at.sea && d <= at.sea.range) return 'sea';
+        if (at.sea && d <= at.sea.range && !(at.sea.ammo && !att.ammo)) return 'sea';
       } else if (dt.domain === 'sub') {
         if (at.asw && d <= at.asw.range) return 'asw';
       }
@@ -581,7 +594,7 @@
       const at = this.type(att), dt = this.type(def);
       const aTile = this.tile(from.q, from.r), dTile = this.tile(def.q, def.r);
       const dist = Hex.distance(from.q, from.r, def.q, def.r);
-      const ranged = (!!at.indirect && dist > 1) || at.domain !== 'land';
+      const ranged = (!!at.indirect && (dist > 1 || (!opts.landing && this.acrossWater(aTile, dTile)))) || at.domain !== 'land';
       const mods = [];
       let A = at.atk * this.strength(att);
       let D = dt.def * this.strength(def);
@@ -607,7 +620,8 @@
         let n = 0;
         for (const nb of Hex.neighbors(def.q, def.r)) {
           const f = this.unitAt(nb.q, nb.r, att, 'land');
-          if (f && f.side === att.side && !this.type(f).indirect && this.type(f).atk >= 2) n++;
+          if (f && f.side === att.side && !this.type(f).indirect && this.type(f).atk >= 2 &&
+              !this.acrossWater(this.tile(f.q, f.r), dTile)) n++;
         }
         n = Math.min(n, 3);
         if (n) { A *= 1 + 0.15 * n; mods.push({ text: `Flanking support +${15 * n}%`, good: true }); }
@@ -641,13 +655,17 @@
         if (this.jamFactor(def.side, def.q, def.r) < 1) { P *= 0.6; mods.push({ text: 'Drones jammed ×0.6', good: false }); }
       }
       if (kind === 'asw' && TERRAIN[this.tile(def.q, def.r).terrain].deep) { P *= 0.7; mods.push({ text: 'Deep water ×0.7', good: false }); }
+      if (kind === 'torpedo' && Hex.within(def.q, def.r, 1).some((h) => {
+        const x = this.unitAt(h.q, h.r, null, 'sea');
+        return x && x.side === def.side && this.type(x).asw;
+      })) { P *= 0.6; mods.push({ text: 'Target screened by ASW escorts ×0.6', good: false }); }
       if (!att.supplied && at.domain === 'land') { P *= 0.5; mods.push({ text: 'Out of supply ×0.5', good: false }); }
       for (const m of this.modules) {
         if (!m.strikeMods) continue;
         const r = m.strikeMods(att, def, kind, mods);
         if (r) P *= r;
       }
-      const s = this.strikeResult(P, def, { noAD, adMult, lethality: kind === 'torpedo' ? 0.4 : 0.3 });
+      const s = this.strikeResult(P, def, { noAD, adMult, lethality: kind === 'torpedo' ? 0.3 : 0.25 });
       if (!noAD && s.D > 0) mods.push({ text: `Air defense intercepts ${Math.round(s.intercept * 100)}%`, good: false });
       return { mode, kind, P, ratio: s.eff / Math.max(0.5, dt.def), ranged: true, mods, expDef: Math.min(3, s.exp), expAtt: 0, strike: s };
     },
@@ -669,6 +687,7 @@
       this.undo = null;
       this.state.saturation[Hex.key(def.q, def.r)] = (this.state.saturation[Hex.key(def.q, def.r)] || 0) + 1;
       if (at.expendable) { att.steps -= 1; res.expended = true; }
+      if (mode === 'sea' && at.sea.ammo) att.ammo = Math.max(0, (att.ammo || 0) - 1);
       // Firing a torpedo gives the submarine's position away to the victim.
       if (at.domain === 'sub') this.reveal(att, def.side);
       // Warships with ASW gear hit back at an attacking submarine.
@@ -740,7 +759,7 @@
         }
       }
 
-      let txt = `${att.name} ${o.ranged ? 'shells' : opts.landing ? 'storms the beach at' : 'attacks'} ${opts.landing ? defFrom.city ? defFrom.city.name : 'the coast' : def.name} (${fmtRatio(o.ratio)}): `;
+      let txt = `${att.name} ${o.ranged ? 'shells' : opts.landing ? 'storms the beach' : 'attacks'} ${opts.landing ? this.placeName(defFrom) : def.name} (${fmtRatio(o.ratio)}): `;
       txt += res.defKilled ? `${def.name} destroyed` : `enemy −${res.defLoss}`;
       if (!o.ranged) txt += res.attKilled ? `, ${att.name} destroyed` : `, own −${res.attLoss}`;
       if (res.retreat) txt += '. Defender retreats';
@@ -823,6 +842,7 @@
         for (const n of Hex.neighbors(t.q, t.r)) {
           const nt = this.tile(n.q, n.r);
           if (!nt || dist.has(nt.key) || this.isSea(nt) || nt.terrain === 'water') continue;
+          if (nt.mass !== t.mass && !this.isRoad(t, nt)) continue;
           const occ = this.unitAt(nt.q, nt.r, null, 'land');
           if (occ && occ.side !== side) continue;
           dist.set(nt.key, d + 1);
@@ -866,9 +886,15 @@
       const side = this.state.side;
       this.state.saturation = {};
       for (const u of this.allUnitsOf(side)) {
-        u.mpLeft = this.type(u).mp;
+        const ut = this.type(u);
+        u.mpLeft = ut.mp;
         u.moved = false;
         u.attacked = false;
+        if (ut.sea && ut.sea.ammo && !u.carrier) {
+          const t = this.tile(u.q, u.r);
+          if (t.city && t.city.port && t.city.owner === side && ut.domain !== 'land') u.ammo = ut.sea.ammo;
+          else if (ut.domain === 'land' && u.supplied && this.state.turn % 2 === 0) u.ammo = Math.min(ut.sea.ammo, (u.ammo || 0) + 1);
+        }
       }
       this.undo = null;
       if (this.scenario.onTurnStart) this.scenario.onTurnStart(this, side);
@@ -930,6 +956,17 @@
         if (this.state.mines[k] && this.state.mines[k] !== u.side) { delete this.state.mines[k]; n++; }
       }
       if (n) this.addLog(u.side, `${u.name} clears ${n} minefield${n > 1 ? 's' : ''}`);
+    },
+
+    // "at Tainan" / "near Tainan" / region name for log messages.
+    placeName(t) {
+      if (t.city) return 'at ' + t.city.name;
+      let best = null;
+      for (const c of this.map.cities) {
+        const d = Hex.distance(c.q, c.r, t.q, t.r);
+        if (d <= 4 && (!best || d < best.d)) best = { d, c };
+      }
+      return best ? 'near ' + best.c.city.name : t.region ? 'on ' + t.region : 'on the coast';
     },
 
     sideName(side) {
