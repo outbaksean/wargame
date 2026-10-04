@@ -351,3 +351,31 @@ kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 4
 .zonecell.zc-sat { stroke: rgba(255, 230, 120, 0.45); stroke-width: 1.2; stroke-dasharray: 3 3; }
 
 label.speed { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+/* ---------- tutorial */
+.tut-step { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; background: #1a1f1b; }
+.tut-step.cur { border-color: var(--accent); }
+.tut-step.done { opacity: 0.6; }
+.tut-head { display: flex; gap: 8px; align-items: center; font-size: 12.5px; cursor: pointer; }
+.tut-step.cur .tut-head { cursor: default; }
+.tut-head b { flex: 1; }
+.tut-mark { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex: none; }
+.tut-step.cur .tut-mark { border-color: var(--accent); color: var(--accent); }
+.tut-step.done .tut-mark { border-color: #3c6a44; color: var(--good); }
+.tut-show { font-size: 11px; padding: 1px 8px; }
+.tut-text { font-size: 12.5px; line-height: 1.45; margin-top: 6px; }
+.tut-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tut-brief { font-size: 11px; padding: 1px 8px; }
+
+/* ---------- campaign missions in the menu */
+.form .missions, .form .m-desc { grid-column: 1 / -1; }
+.missions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mission { display: flex; gap: 8px; align-items: center; text-align: left; padding: 6px 8px; }
+.mission.on { border-color: var(--accent); background: #2e2c1f; }
+.m-num { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex: none; }
+.mission.done .m-num { border-color: #3c6a44; color: var(--good); }
+.m-body { display: flex; flex-direction: column; min-width: 0; }
+.m-body small { color: var(--muted); font-size: 11.5px; }
+.m-desc { margin: 0; color: var(--muted); }
+.briefing p { margin: 0 0 10px; }
+@media (max-width: 640px) { .missions { grid-template-columns: 1fr; } }

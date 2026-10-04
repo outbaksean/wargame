@@ -866,16 +866,71 @@
       <label class="check"><input type="checkbox" id="f-fog" checked> Fog of war</label>`;
   }
 
+  // ---------- campaigns (progress lives in this browser only)
+  const progressKey = (id) => 'hexcommand.campaign.' + id;
+  function campaignProgress(id) {
+    try { return JSON.parse(localStorage.getItem(progressKey(id))) || {}; } catch (e) { return {}; }
+  }
+  function markMissionDone(sc) {
+    const p = campaignProgress(sc.campaign);
+    p[sc.id] = true;
+    try { localStorage.setItem(progressKey(sc.campaign), JSON.stringify(p)); } catch (e) { /* storage unavailable */ }
+  }
+  function nextMission(sc) {
+    const c = WG.CAMPAIGNS[sc.campaign];
+    const id = c && c.missions[c.missions.indexOf(sc.id) + 1];
+    return id ? WG.SCENARIOS[id] : null;
+  }
+  const playerFaction = (sc) => {
+    const ctl = sc.roles[0].controllers;
+    return sc.factions[Object.keys(ctl).find((f) => ctl[f] === 'human')];
+  };
+
+  // Menu entries: standalone scenarios, each campaign listed after the scenario it graduates into.
+  function menuEntries() {
+    const camps = Object.values(WG.CAMPAIGNS);
+    const out = [];
+    for (const s of Object.values(WG.SCENARIOS)) {
+      if (s.campaign) continue;
+      out.push({ id: s.id, name: s.name, description: s.description, scen: s });
+      for (const c of camps) if (c.graduate === s.id) out.push({ id: 'campaign:' + c.id, name: c.name, description: c.description, camp: c });
+    }
+    for (const c of camps) if (!out.some((e) => e.camp === c)) out.push({ id: 'campaign:' + c.id, name: c.name, description: c.description, camp: c });
+    return out;
+  }
+
+  function campaignForm(c, picked) {
+    const done = campaignProgress(c.id);
+    const missions = c.missions.map((id, i) => {
+      const m = WG.SCENARIOS[id];
+      return `<button type="button" class="mission ${id === picked ? 'on' : ''} ${done[id] ? 'done' : ''}" data-mission="${id}">
+        <span class="m-num">${done[id] ? '✓' : i + 1}</span>
+        <span class="m-body"><b>${esc(m.name)}</b><small>${esc(m.topic || '')} · as ${esc(playerFaction(m).name)}</small></span>
+      </button>`;
+    }).join('');
+    return `
+      <div class="missions">${missions}</div>
+      <p class="m-desc small">${esc(WG.SCENARIOS[picked].description)}</p>
+      <label class="check"><input type="checkbox" id="f-fog" checked> Fog of war</label>`;
+  }
+
   function showMenu() {
     const inGame = !!Game.state && !Game.state.over;
     const hasSave = !Game.state && Game.hasSave();
-    const list = Object.values(WG.SCENARIOS);
-    let current = list.find((s) => s.id === 'taiwan') || list[0];
+    const list = menuEntries();
+    let current = list.find((e) => e.id === 'taiwan') || list[0];
+    let picked = null; // selected campaign mission
+    const formHtml = (e) => {
+      if (!e.camp) return scenarioForm(e.scen);
+      const done = campaignProgress(e.camp.id);
+      picked = e.camp.missions.find((id) => !done[id]) || e.camp.missions[0];
+      return campaignForm(e.camp, picked);
+    };
     showModal(`
       <h2 class="title">HEX COMMAND</h2>
       <p class="sub">Operational hex wargame with NATO symbology. Runs entirely in your browser.</p>
-      <div class="scen-list">${list.map((s) => `<button class="scen ${s === current ? 'on' : ''}" data-scen="${s.id}"><b>${esc(s.name)}</b><span>${esc(s.description)}</span></button>`).join('')}</div>
-      <div class="form" id="f-form">${scenarioForm(current)}</div>
+      <div class="scen-list">${list.map((e) => `<button class="scen ${e === current ? 'on' : ''}" data-scen="${e.id}"><b>${esc(e.name)}</b><span>${esc(e.description)}</span></button>`).join('')}</div>
+      <div class="form" id="f-form">${formHtml(current)}</div>
       <label class="speed">Animation speed <select id="f-speed">${Object.keys(SPEEDS).map((x) => `<option value="${x}" ${x === speed ? 'selected' : ''}>${x[0].toUpperCase() + x.slice(1)}</option>`).join('')}</select></label>
       <div class="btns">
         ${inGame ? '<button id="f-resume">Resume</button>' : ''}
@@ -886,13 +941,20 @@
         document.querySelectorAll('.reroll').forEach((b) => {
           b.onclick = () => { b.parentElement.querySelector('input').value = Math.floor(Math.random() * 1e6); };
         });
+        document.querySelectorAll('.mission').forEach((b) => {
+          b.onclick = () => {
+            picked = b.dataset.mission;
+            document.querySelectorAll('.mission').forEach((x) => x.classList.toggle('on', x === b));
+            $('.m-desc').textContent = WG.SCENARIOS[picked].description;
+          };
+        });
       };
       bindForm();
       document.querySelectorAll('.scen').forEach((b) => {
         b.onclick = () => {
-          current = WG.SCENARIOS[b.dataset.scen];
+          current = list.find((e) => e.id === b.dataset.scen);
           document.querySelectorAll('.scen').forEach((x) => x.classList.toggle('on', x === b));
-          $('#f-form').innerHTML = scenarioForm(current);
+          $('#f-form').innerHTML = formHtml(current);
           bindForm();
         };
       });
@@ -903,16 +965,32 @@
       if (inGame) $('#f-resume').onclick = closeModal;
       if (hasSave) $('#f-continue').onclick = () => { closeModal(); continueGame(); };
       $('#f-start').onclick = () => {
-        const role = current.roles.find((r) => r.id === $('#f-role').value);
+        const sc = current.camp ? WG.SCENARIOS[picked] : current.scen;
+        const roleSel = $('#f-role');
+        const role = (roleSel && sc.roles.find((r) => r.id === roleSel.value)) || sc.roles[0];
         const options = {};
         document.querySelectorAll('[data-opt]').forEach((i) => {
           options[i.dataset.opt] = i.tagName === 'INPUT' ? Math.abs(parseInt(i.value, 10)) || Math.floor(Math.random() * 1e6) : i.value;
         });
         const fog = $('#f-fog').checked;
         closeModal();
-        startGame({ scenario: current.id, controllers: role.controllers, fog, options });
+        startGame({ scenario: sc.id, controllers: role.controllers, fog, options });
       };
     }, !inGame);
+  }
+
+  // Mission briefing; with `then`, shown before the game starts and runs it on Begin.
+  function showBriefing(then) {
+    const sc = Game.scenario;
+    const c = sc.campaign && WG.CAMPAIGNS[sc.campaign];
+    const n = c ? c.missions.indexOf(sc.id) + 1 : 0;
+    showModal(`
+      ${c ? `<p class="sub">${esc(c.name)} · Mission ${n} of ${c.missions.length}${sc.topic ? ` · ${esc(sc.topic)}` : ''}</p>` : ''}
+      <h2>${esc(sc.name)}</h2>
+      <div class="help briefing">${sc.briefing}</div>
+      <div class="btns"><button id="b-go" class="primary">${then ? 'Begin mission' : 'Close'}</button></div>`, () => {
+      $('#b-go').onclick = () => { closeModal(); if (then) then(); };
+    }, !!then);
   }
 
   function showHelp() {
@@ -990,25 +1068,45 @@
     const towns = (side) => Game.map.cities.filter((c) => c.city.owner === side && c.city.vp).length;
     setBanner('');
     const extraRows = sc.resultRows ? sc.resultRows(Game) : '';
+    // Campaign missions: record a win for a single human side and offer the next mission or a retry.
+    const human = (side) => Game.humanFactions(side).length > 0;
+    let campaignBtns = '';
+    let next = null;
+    if (sc.campaign) {
+      const won = s.winner !== 'draw' && human(s.winner) && !human(Game.other(s.winner));
+      if (won) {
+        markMissionDone(sc);
+        next = nextMission(sc);
+        const grad = WG.SCENARIOS[WG.CAMPAIGNS[sc.campaign].graduate];
+        campaignBtns = next ? `<button id="g-next" class="primary">Next mission: ${esc(next.name)}</button>`
+          : grad ? `<button id="g-next" class="primary">Play ${esc(grad.name)}</button>` : '';
+      } else {
+        campaignBtns = '<button id="g-retry" class="primary">Retry mission</button>';
+      }
+    }
     showModal(`
       <h2 class="${s.winner}">${esc(title)}</h2>
       <p>${esc(reason)}</p>
       <table class="tbl result">
         <tr><th></th><th class="blue">${esc(Game.sideName('blue'))}</th><th class="red">${esc(Game.sideName('red'))}</th></tr>
-        <tr><td>Victory points</td><td>${s.vp.blue}</td><td>${s.vp.red}</td></tr>
-        <tr><td>Objectives held</td><td>${towns('blue')}</td><td>${towns('red')}</td></tr>
+        ${sc.campaign ? '' : `<tr><td>Victory points</td><td>${s.vp.blue}</td><td>${s.vp.red}</td></tr>
+        <tr><td>Objectives held</td><td>${towns('blue')}</td><td>${towns('red')}</td></tr>`}
         <tr><td>Units remaining</td><td>${alive('blue')}</td><td>${alive('red')}</td></tr>
         <tr><td>Units lost</td><td>${s.lost.blue || 0}</td><td>${s.lost.red || 0}</td></tr>
         ${extraRows}
       </table>
-      <div class="btns"><button id="g-view">View map</button><button id="g-new" class="primary">New game</button></div>`, () => {
+      <div class="btns"><button id="g-view">View map</button><button id="g-new" class="${campaignBtns ? '' : 'primary'}">${sc.campaign ? 'Menu' : 'New game'}</button>${campaignBtns}</div>`, () => {
       $('#g-view').onclick = closeModal;
       $('#g-new').onclick = () => showMenu();
+      const restart = (m) => startGame({ scenario: m.id, controllers: m.roles[0].controllers, fog: s.fog, options: {} });
+      if ($('#g-next')) $('#g-next').onclick = () => (next ? restart(next) : showMenu());
+      if ($('#g-retry')) $('#g-retry').onclick = () => restart(sc);
     });
   }
 
   // ---------- game lifecycle
-  function begin() {
+  // Draws a freshly started or loaded game; a mission briefing, if any, holds the first turn until dismissed.
+  function begin(briefing) {
     token++;
     busy = false;
     humanPhase = false;
@@ -1023,13 +1121,14 @@
     computeSel();
     initialView();
     refresh();
-    runTurn();
+    if (briefing) showBriefing(runTurn);
+    else runTurn();
   }
 
   function startGame(opts) {
     Game.newGame(opts);
     Game.save();
-    begin();
+    begin(!!Game.scenario.briefing);
   }
 
   function continueGame() {
@@ -1048,7 +1147,7 @@
   WG.UI = {
     registerTab, showTab, registerUnitAction: (fn) => unitActionProviders.push(fn), select, deselect, controllable,
     showModal, closeModal, setMode, cancelMode, refresh, setBanner, humanTurn, viewer, knownFor, isVisibleTo,
-    actions, esc, centerOn, get busy() { return busy; }, set busy(v) { busy = v; },
+    actions, esc, centerOn, showBriefing, get busy() { return busy; }, set busy(v) { busy = v; },
   };
 
   window.addEventListener('DOMContentLoaded', init);

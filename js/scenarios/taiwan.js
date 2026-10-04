@@ -432,6 +432,9 @@
     .reduce((s, c) => s + c.city.vp, 0);
   const totalVP = (G) => G.map.cities.filter((c) => c.home === 'blue' && c.city.vp).reduce((s, c) => s + c.city.vp, 0);
 
+  // Placement helpers shared with the tutorial scenario.
+  WG.TaiwanKit = { U, ship, SIDE, COUNTRY };
+
   WG.registerScenario({
     id: 'taiwan',
     name: 'Strait Crisis (Taiwan, 2026–2031)',
@@ -701,6 +704,9 @@
       return true;
     },
     aiMayStrikeTile(G, side, t) {
+      // Japanese and Philippine soil (Yonaguni's radar, Batanes) follow the same rules as their bases.
+      if (side === 'red' && t.region === 'Yonaguni (Japan)') return this.aiMayStrikeBase(G, side, { region: 'Japan' });
+      if (side === 'red' && t.region === 'Batanes (Philippines)') return this.aiMayStrikeBase(G, side, { region: 'Philippines' });
       if (side === 'red') return true;
       if (!isMainland(t)) return true;
       return mainlandOk(G);

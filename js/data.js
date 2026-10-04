@@ -83,4 +83,8 @@
 
   WG.SCENARIOS = {};
   WG.registerScenario = (def) => { WG.SCENARIOS[def.id] = def; };
+
+  // A campaign is an ordered list of scenario ids, shown as one entry in the menu.
+  WG.CAMPAIGNS = {};
+  WG.registerCampaign = (def) => { WG.CAMPAIGNS[def.id] = def; };
 })(window.WG);
